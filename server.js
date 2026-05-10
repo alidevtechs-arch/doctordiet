@@ -168,12 +168,10 @@ app.post('/api/checkout', checkoutLimiter, async (req, res) => {
   try {
     console.log(`[${reqId}] Calling GetAccessToken → ${TOKEN_URL}`);
 
+    // ✅ Fix — only send MERCHANT_ID and SECURED_KEY
     const tokenRes = await axios.post(TOKEN_URL, qs.stringify({
-      MERCHANT_ID,
-      SECURED_KEY,
-      BASKET_ID:     basketId,
-      TXNAMT:        amountStr,
-      CURRENCY_CODE: 'PKR',
+        MERCHANT_ID,
+        SECURED_KEY,
     }), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       timeout: 15000,
