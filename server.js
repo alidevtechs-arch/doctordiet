@@ -1,240 +1,167 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// PayFast — Node.js Backend for Hostinger
-// Run: node server.js
-// ─────────────────────────────────────────────────────────────────────────────
 require('dotenv').config();
 
-const express   = require('express');
-const cors      = require('cors');
-const axios     = require('axios');
-const qs        = require('qs');
-const crypto    = require('crypto');
-const rateLimit = require('express-rate-limit');
+const express = require('express');
+const cors    = require('cors');
+const axios   = require('axios');
+const qs      = require('qs');
 
-const {
-  MERCHANT_ID,
-  SECURED_KEY,
-  // UAT (sandbox) = ipguat.apps.net.pk  ← use this for testing
-  // Production    = verify URL from your PayFast merchant portal
-  PAYFAST_BASE_URL = 'https://ipguat.apps.net.pk/Ecommerce/api',
-  SUCCESS_URL      = 'https://doctor-diet.pk/checkout/success',
-  FAILURE_URL      = 'https://doctor-diet.pk/checkout/cancel',
-  // During dev set this to: http://localhost:5173 (your Vite port)
-  // In production set this to your actual frontend domain
-  ALLOWED_ORIGIN   = 'http://localhost:5173',
-  PORT             = 3001,
-  NODE_ENV         = 'development',
-} = process.env;
-
-if (!MERCHANT_ID || !SECURED_KEY) {
-  console.error('❌ MERCHANT_ID and SECURED_KEY must be set in .env');
-  process.exit(1);
-}
-
-const CHECKOUT_URL = `${PAYFAST_BASE_URL}/Transaction/PostTransaction`;
-const TOKEN_URL    = `${PAYFAST_BASE_URL}/Transaction/GetAccessToken`;
-
-// ─── MD5 Secure Hash ─────────────────────────────────────────────────────────
-function makeSecureHash(merchantId, securedKey, basketId, amount) {
-  return crypto
-    .createHash('md5')
-    .update(`${merchantId}${securedKey}${basketId}${amount}`)
-    .digest('hex');
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function formatPhone(phone) {
-  const cleaned = phone.replace(/[\s\-\+]/g, '');
-  if (cleaned.startsWith('92')) return `92-${cleaned.slice(2)}`;
-  if (cleaned.startsWith('0'))  return `92-${cleaned.slice(1)}`;
-  return `92-${cleaned}`;
-}
-
-function formatAmount(amount) {
-  return Number(amount).toFixed(2);
-}
-
-function formatOrderDate(dateStr) {
-  // YYYYMMDDHHmmss → "YYYY-MM-DD HH:mm:ss"
-  return `${dateStr.slice(0,4)}-${dateStr.slice(4,6)}-${dateStr.slice(6,8)} ${dateStr.slice(8,10)}:${dateStr.slice(10,12)}:${dateStr.slice(12,14)}`;
-}
-
-function getClientIp(req) {
-  return (
-    (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
-    req.socket?.remoteAddress ||
-    '127.0.0.1'
-  );
-}
-
-// ─── Validation ───────────────────────────────────────────────────────────────
-function validateCheckoutBody(body) {
-  const errors = [];
-  const { basketId, orderDate, amount, customerName, customerPhone, customerEmail } = body;
-
-  if (!basketId || typeof basketId !== 'string' || basketId.length > 50)
-    errors.push('basketId is required and must be under 50 characters');
-  if (!orderDate || !/^\d{14}$/.test(orderDate))
-    errors.push('orderDate must be 14 digits: YYYYMMDDHHmmss');
-  const amt = Number(amount);
-  if (!amount || isNaN(amt) || amt <= 0 || amt > 1000000)
-    errors.push('amount must be a positive number up to 1,000,000');
-  if (!customerName || customerName.trim().length < 2 || customerName.length > 100)
-    errors.push('customerName must be 2–100 characters');
-  if (!customerPhone || !/^[\d\s\-\+]{10,15}$/.test(customerPhone))
-    errors.push('customerPhone is invalid');
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!customerEmail || !emailRegex.test(customerEmail))
-    errors.push('customerEmail is invalid');
-
-  return errors;
-}
-
-// ─── Extract token from PayFast response ──────────────────────────────────────
-function extractToken(data) {
-  return (
-    data?.ACCESS_TOKEN ||
-    data?.access_token ||
-    data?.AccessToken  ||
-    data?.Token        ||
-    data?.token        ||
-    null
-  );
-}
-
-// ─── Express app ──────────────────────────────────────────────────────────────
 const app = express();
-app.set('trust proxy', 1);
-app.disable('x-powered-by');
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// CORS — allow your frontend origin
-app.use(cors({
-  origin: NODE_ENV === 'production' ? ALLOWED_ORIGIN : '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+// ─── Config ───────────────────────────────────────────────────────────────────
+// UAT (sandbox) credentials — use these for testing
+// Switch to production credentials + URL when going live
+const PAYFAST_BASE_URL = process.env.PAYFAST_BASE_URL || 'https://ipguat.apps.net.pk/Ecommerce/api';
+const MERCHANT_ID      = process.env.MERCHANT_ID      || '14833';
+const SECURED_KEY      = process.env.SECURED_KEY      || 'rPcy4T7GQkSCFsHBLdn26s';
+const SUCCESS_URL      = process.env.SUCCESS_URL      || 'https://doctor-diet.pk/checkout/success';
+const FAILURE_URL      = process.env.FAILURE_URL      || 'https://doctor-diet.pk/checkout/cancel';
 
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
-
-// ─── Rate limiters ────────────────────────────────────────────────────────────
-const checkoutLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: { error: 'Too many requests. Please try again in 15 minutes.' },
-});
+const getClientIp = (req) =>
+  (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '127.0.0.1';
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', env: NODE_ENV, payfast: PAYFAST_BASE_URL });
+  res.json({ status: 'ok', payfast: PAYFAST_BASE_URL });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/checkout
-// ─────────────────────────────────────────────────────────────────────────────
-app.post('/api/checkout', checkoutLimiter, async (req, res) => {
-  const reqId    = crypto.randomUUID();
-  const clientIp = getClientIp(req);
-  console.log(`[${reqId}] Checkout initiated — IP: ${clientIp}, basket: ${req.body?.basketId}`);
-
-  // 1. Validate
-  const errors = validateCheckoutBody(req.body);
-  if (errors.length) {
-    console.warn(`[${reqId}] Validation failed:`, errors);
-    return res.status(400).json({ success: false, errors });
-  }
-
-  const {
-    basketId,
-    orderDate,
-    amount,
-    customerName,
-    customerPhone,
-    customerEmail,
-    customerCity  = 'Karachi',
-    planName      = 'Plan',
-    billingCycle  = 'Monthly',
-    successUrl    = SUCCESS_URL,
-    failureUrl    = FAILURE_URL,
-  } = req.body;
-
-  const amountStr      = formatAmount(amount);
-  const formattedDate  = formatOrderDate(orderDate);
-  const formattedPhone = formatPhone(customerPhone);
-  const secureHash     = makeSecureHash(MERCHANT_ID, SECURED_KEY, basketId, amountStr);
-
-  // 2. Get access token from PayFast
-  let accessToken;
+// ─── POST /api/checkout ───────────────────────────────────────────────────────
+app.post('/api/checkout', async (req, res) => {
   try {
-    console.log(`[${reqId}] Calling GetAccessToken → ${TOKEN_URL}`);
+    const customer_ip = getClientIp(req);
 
-    // ✅ Fix — only send MERCHANT_ID and SECURED_KEY
-    const tokenRes = await axios.post(TOKEN_URL, qs.stringify({
-        MERCHANT_ID,
-        SECURED_KEY,
-    }), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      timeout: 15000,
+    const {
+      basketId,
+      orderDate,
+      amount,
+      customerName,
+      customerPhone,
+      customerEmail,
+      customerCity  = 'Karachi',
+      planName      = 'Plan',
+      billingCycle  = 'Monthly',
+      successUrl    = SUCCESS_URL,
+      failureUrl    = FAILURE_URL,
+    } = req.body;
+
+    // Basic validation
+    if (!basketId || !amount || !customerEmail || !customerPhone || !customerName) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+
+    const txnamt      = Number(amount).toFixed(2);
+    const currency    = 'PKR';
+
+    // Format phone → 92-3XXXXXXXXX
+    const cleaned = customerPhone.replace(/[\s\-\+]/g, '');
+    const phone   = cleaned.startsWith('92') ? `92-${cleaned.slice(2)}`
+                  : cleaned.startsWith('0')  ? `92-${cleaned.slice(1)}`
+                  : `92-${cleaned}`;
+
+    // Format date YYYYMMDDHHmmss → "YYYY-MM-DD HH:mm:ss"
+    const order_date = orderDate
+      ? `${orderDate.slice(0,4)}-${orderDate.slice(4,6)}-${orderDate.slice(6,8)} ${orderDate.slice(8,10)}:${orderDate.slice(10,12)}:${orderDate.slice(12,14)}`
+      : new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+    // ── Step 1: Get Access Token ──────────────────────────────────────────────
+    const tokenPayload = qs.stringify({
+      MERCHANT_ID,
+      SECURED_KEY,
+      BASKET_ID:     basketId,
+      TXNAMT:        txnamt,
+      CURRENCY_CODE: currency,
+      customer_ip,
     });
 
-    accessToken = extractToken(tokenRes.data);
+    console.log('\n→ GetAccessToken payload:', tokenPayload);
 
-    if (!accessToken) {
-      console.error(`[${reqId}] No token in PayFast response:`, tokenRes.data);
-      return res.status(502).json({
+    const tokenRes = await axios.post(
+      `${PAYFAST_BASE_URL}/Transaction/GetAccessToken`,
+      tokenPayload,
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 15000,
+      }
+    );
+
+    console.log('← GetAccessToken response:', JSON.stringify(tokenRes.data));
+
+    const token = tokenRes.data?.ACCESS_TOKEN || tokenRes.data?.token;
+    if (!token) {
+      return res.status(400).json({
         success: false,
-        error: 'Payment gateway did not return a token. Please try again.',
+        error:  'Could not obtain access token',
+        detail: tokenRes.data,
       });
     }
 
-    console.log(`[${reqId}] Token obtained ✅`);
+    // ── Step 2: Return form fields for hosted checkout ────────────────────────
+    const formFields = {
+      MERCHANT_ID,
+      TOKEN:                  token,
+      BASKET_ID:              basketId,
+      TXNAMT:                 txnamt,
+      CURRENCY_CODE:          currency,
+      ORDER_DATE:             order_date,
+      CUSTOMER_MOBILE_NO:     phone,
+      CUSTOMER_EMAIL_ADDRESS: customerEmail,
+      CUSTOMER_NAME:          customerName.trim(),
+      CUSTOMER_CITY:          customerCity,
+      TXNDESC:                `${planName} - ${billingCycle}`,
+      SUCCESS_URL:            successUrl,
+      FAILURE_URL:            failureUrl,
+      CHECKOUT_URL:           failureUrl,
+      VERSION:                'WOOCOM-APPS-PAYMENT-0.9',
+    };
+
+    console.log('✅ Checkout ready — basket:', basketId, 'amount:', txnamt);
+
+    return res.json({
+      success:  true,
+      postUrl:  `${PAYFAST_BASE_URL}/Transaction/PostTransaction`,
+      formFields,
+    });
+
   } catch (err) {
-    console.error(`[${reqId}] GetAccessToken failed:`, err.message);
+    console.error('Checkout error:', err.response?.data || err.message);
     return res.status(502).json({
       success: false,
-      error: `Could not connect to payment gateway: ${err.message}`,
+      error:   `Could not connect to payment gateway: ${err.message}`,
+      detail:  err.response?.data,
     });
   }
-
-  // 3. Build form fields
-  const formFields = {
-    MERCHANT_ID,
-    TOKEN:                  accessToken,
-    basket_id:              basketId,
-    txnamt:                 amountStr,
-    currency_code:          'PKR',
-    order_date:             formattedDate,
-    customer_mobile_no:     formattedPhone,
-    customer_email_address: customerEmail,
-    customer_name:          customerName.trim(),
-    customer_city:          customerCity,
-    txndesc:                `${planName} - ${billingCycle}`,
-    proccode:               '00',
-    SUCCESS_URL:            successUrl,
-    FAILURE_URL:            failureUrl,
-    CHECKOUT_URL:           failureUrl,
-    secure_hash:            secureHash,
-    VERSION:                'WOOCOM-APPS-PAYMENT-0.9',
-  };
-
-  console.log(`[${reqId}] Checkout ready ✅ — basket: ${basketId}, amount: ${amountStr}`);
-  return res.json({ success: true, postUrl: CHECKOUT_URL, formFields });
 });
 
-// ─── 404 & error handlers ─────────────────────────────────────────────────────
+// ─── GET /api/status/:basketId ────────────────────────────────────────────────
+app.get('/api/status/:basketId', async (req, res) => {
+  try {
+    const { token, order_date } = req.query;
+    const customer_ip = getClientIp(req);
+
+    const response = await axios.get(
+      `${PAYFAST_BASE_URL}/Transaction/GetTransactionStatus/${req.params.basketId}`,
+      {
+        params: { order_date, customer_ip },
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000,
+      }
+    );
+    res.json({ success: true, data: response.data });
+  } catch (err) {
+    console.error('Status error:', err.response?.data || err.message);
+    res.status(500).json({ success: false, error: 'Status check failed', detail: err.response?.data });
+  }
+});
+
+// ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
-app.use((err, req, res, _next) => {
-  console.error('Unhandled error:', err.message);
-  res.status(500).json({ error: 'Internal server error' });
-});
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`✅ PayFast backend running on port ${PORT} [${NODE_ENV}]`);
+  console.log(`\n✅ PayFast backend running on port ${PORT}`);
   console.log(`   PayFast URL: ${PAYFAST_BASE_URL}`);
-  console.log(`   Allowed origin: ${ALLOWED_ORIGIN}`);
+  console.log(`   Merchant ID: ${MERCHANT_ID}\n`);
 });
-
-process.on('SIGTERM', () => process.exit(0));
-process.on('uncaughtException',  (err) => console.error('Uncaught exception:', err.message));
-process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
