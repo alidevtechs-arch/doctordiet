@@ -20,9 +20,7 @@ const SUCCESS_URL = process.env.SUCCESS_URL || 'https://doctor-diet.pk/checkout/
 const FAILURE_URL = process.env.FAILURE_URL || 'https://doctor-diet.pk/checkout/cancel';
 
 // And in formFields, use these directly again:
-SUCCESS_URL= successUrl,
-FAILURE_URL= failureUrl,
-CHECKOUT_URL= failureUrl,
+
 
 const getClientIp = (req) =>
   (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '127.0.0.1';
@@ -115,9 +113,9 @@ app.post('/api/checkout', async (req, res) => {
       CUSTOMER_NAME:          customerName.trim(),
       CUSTOMER_CITY:          customerCity,
       TXNDESC:                `${planName} - ${billingCycle}`,
-      PAYFAST_SUCCESS_URL:    SUCCESS_URL,  // ← Railway URL
-      FAILURE_URL:            FAILURE_URL,  // ← Railway URL
-      CHECKOUT_URL:           CHECKOUT_URL,
+      PAYFAST_SUCCESS_URL:    successUrl,  // ← Railway URL
+      FAILURE_URL:            failureUrl,  // ← Railway URL
+      CHECKOUT_URL:           failureUrl,
       VERSION:                'WOOCOM-APPS-PAYMENT-0.9',
     };
 
