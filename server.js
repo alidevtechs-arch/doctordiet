@@ -16,8 +16,13 @@ app.use(express.urlencoded({ extended: true }));
 const PAYFAST_BASE_URL = process.env.PAYFAST_BASE_URL || 'https://ipg.apps.net.pk/Ecommerce/api';
 const MERCHANT_ID      = process.env.MERCHANT_ID;
 const SECURED_KEY      = process.env.SECURED_KEY;
-const SUCCESS_URL      = process.env.SUCCESS_URL      || 'https://doctor-diet.pk/checkout/success';
-const FAILURE_URL      = process.env.FAILURE_URL      || 'https://doctor-diet.pk/checkout/cancel';
+const RAILWAY_URL  = process.env.RAILWAY_URL || 'https://doctordiet-production.up.railway.app';
+const SUCCESS_URL  = process.env.SUCCESS_URL || 'https://doctor-diet.pk/checkout/success';
+const FAILURE_URL  = process.env.FAILURE_URL || 'https://doctor-diet.pk/checkout/cancel';
+
+// Use Railway as the intermediary for PayFast callbacks
+const PAYFAST_SUCCESS_URL = `${RAILWAY_URL}/payment/success`;
+const PAYFAST_FAILURE_URL = `${RAILWAY_URL}/payment/cancel`;
 
 const getClientIp = (req) =>
   (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '127.0.0.1';
@@ -153,6 +158,29 @@ app.get('/api/status/:basketId', async (req, res) => {
     console.error('Status error:', err.response?.data || err.message);
     res.status(500).json({ success: false, error: 'Status check failed', detail: err.response?.data });
   }
+});
+
+// ─── Payment redirect handler ─────────────────────────────────────────────────
+app.get('/payment/success', (req, res) => {
+  // Grab all params PayFast sends and forward them to your React app
+  const params = new URLSearchParams(req.query).toString();
+  res.redirect(302, `${SUCCESS_URL}?${params}`);
+});
+
+app.get('/payment/cancel', (req, res) => {
+  const params = new URLSearchParams(req.query).toString();
+  res.redirect(302, `${FAILURE_URL}?${params}`);
+});
+
+// Also handle POST (PayFast sometimes POSTs the callback)
+app.post('/payment/success', (req, res) => {
+  const params = new URLSearchParams(req.body).toString();
+  res.redirect(302, `${SUCCESS_URL}?${params}`);
+});
+
+app.post('/payment/cancel', (req, res) => {
+  const params = new URLSearchParams(req.body).toString();
+  res.redirect(302, `${FAILURE_URL}?${params}`);
 });
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
