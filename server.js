@@ -16,8 +16,8 @@ app.use(express.urlencoded({ extended: true }));
 const PAYFAST_BASE_URL = process.env.PAYFAST_BASE_URL || 'https://ipg.apps.net.pk/Ecommerce/api';
 const MERCHANT_ID      = process.env.MERCHANT_ID;
 const SECURED_KEY      = process.env.SECURED_KEY;
-const SUCCESS_URL      = process.env.SUCCESS_URL      
-const FAILURE_URL      = process.env.FAILURE_URL      
+const SUCCESS_URL      = process.env.SUCCESS_URL;    
+const FAILURE_URL      = process.env.FAILURE_URL;     
 
 const getClientIp = (req) =>
   (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '127.0.0.1';
