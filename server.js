@@ -155,6 +155,54 @@ app.get('/api/status/:basketId', async (req, res) => {
   }
 });
 
+function iframeBreakResponse(res, targetUrl) {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html>
+  <html>
+    <head><title>Redirecting...</title></head>
+    <body>
+      <script>
+        try {
+          if (window.self !== window.top) {
+            window.top.location.replace(${JSON.stringify(targetUrl)});
+          } else {
+            window.location.replace(${JSON.stringify(targetUrl)});
+          }
+        } catch(e) {
+          window.location.replace(${JSON.stringify(targetUrl)});
+        }
+      </script>
+      <p>Redirecting, please wait...</p>
+    </body>
+  </html>`);
+}
+
+app.get('/payment/success', (req, res) => {
+  const params    = new URLSearchParams(req.query).toString();
+  const targetUrl = `${SUCCESS_URL}?${params}`;
+  iframeBreakResponse(res, targetUrl);
+});
+
+app.post('/payment/success', (req, res) => {
+  const params    = new URLSearchParams(req.body).toString();
+  const targetUrl = `${SUCCESS_URL}?${params}`;
+  iframeBreakResponse(res, targetUrl);
+});
+
+app.get('/payment/cancel', (req, res) => {
+  const params    = new URLSearchParams(req.query).toString();
+  const targetUrl = `${FAILURE_URL_RAILWAY.replace('your-app.up.railway.app', '')}`;
+  // Actually point to the React cancel page:
+  const cancelTarget = `${process.env.SUCCESS_URL?.replace('/checkout/success', '/checkout/cancel')}?${params}`;
+  iframeBreakResponse(res, cancelTarget);
+});
+
+app.post('/payment/cancel', (req, res) => {
+  const params       = new URLSearchParams(req.body).toString();
+  const cancelTarget = `${process.env.SUCCESS_URL?.replace('/checkout/success', '/checkout/cancel')}?${params}`;
+  iframeBreakResponse(res, cancelTarget);
+});
+
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
