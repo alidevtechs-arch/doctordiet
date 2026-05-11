@@ -117,7 +117,7 @@ app.post('/api/checkout', async (req, res) => {
       TXNDESC:                `${planName} - ${billingCycle}`,
       PAYFAST_SUCCESS_URL:    PAYFAST_SUCCESS_URL,  // ← Railway URL
       FAILURE_URL:            PAYFAST_FAILURE_URL,  // ← Railway URL
-      CHECKOUT_URL:           PAYFAST_BASE_URL,
+      CHECKOUT_URL:           PAYFAST_FAILURE_URL,
       VERSION:                'WOOCOM-APPS-PAYMENT-0.9',
     };
 
