@@ -16,13 +16,13 @@ app.use(express.urlencoded({ extended: true }));
 const PAYFAST_BASE_URL = process.env.PAYFAST_BASE_URL || 'https://ipg.apps.net.pk/Ecommerce/api';
 const MERCHANT_ID      = process.env.MERCHANT_ID;
 const SECURED_KEY      = process.env.SECURED_KEY;
-const RAILWAY_URL  = process.env.RAILWAY_URL || 'https://doctordiet-production.up.railway.app';
-const SUCCESS_URL  = process.env.SUCCESS_URL || 'https://doctor-diet.pk/checkout/success';
-const FAILURE_URL  = process.env.FAILURE_URL || 'https://doctor-diet.pk/checkout/cancel';
+const SUCCESS_URL = process.env.SUCCESS_URL || 'https://doctor-diet.pk/checkout/success';
+const FAILURE_URL = process.env.FAILURE_URL || 'https://doctor-diet.pk/checkout/cancel';
 
-// Use Railway as the intermediary for PayFast callbacks
-const PAYFAST_SUCCESS_URL = `${RAILWAY_URL}/payment/success`;
-const PAYFAST_FAILURE_URL = `${RAILWAY_URL}/payment/cancel`;
+// And in formFields, use these directly again:
+SUCCESS_URL: successUrl,
+FAILURE_URL: failureUrl,
+CHECKOUT_URL: failureUrl,
 
 const getClientIp = (req) =>
   (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '127.0.0.1';
@@ -115,9 +115,9 @@ app.post('/api/checkout', async (req, res) => {
       CUSTOMER_NAME:          customerName.trim(),
       CUSTOMER_CITY:          customerCity,
       TXNDESC:                `${planName} - ${billingCycle}`,
-      PAYFAST_SUCCESS_URL:    PAYFAST_SUCCESS_URL,  // ← Railway URL
-      FAILURE_URL:            PAYFAST_FAILURE_URL,  // ← Railway URL
-      CHECKOUT_URL:           PAYFAST_FAILURE_URL,
+      PAYFAST_SUCCESS_URL:    SUCCESS_URL,  // ← Railway URL
+      FAILURE_URL:            FAILURE_URL,  // ← Railway URL
+      CHECKOUT_URL:           CHECKOUT_URL,
       VERSION:                'WOOCOM-APPS-PAYMENT-0.9',
     };
 
