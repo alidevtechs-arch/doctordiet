@@ -13,11 +13,15 @@ app.use(express.urlencoded({ extended: true }));
 // ─── Config ───────────────────────────────────────────────────────────────────
 // UAT (sandbox) credentials — use these for testing
 // Switch to production credentials + URL when going live
-const PAYFAST_BASE_URL = process.env.PAYFAST_BASE_URL || 'https://ipg.apps.net.pk/Ecommerce/api';
-const MERCHANT_ID      = process.env.MERCHANT_ID;
-const SECURED_KEY      = process.env.SECURED_KEY;
-const SUCCESS_URL = process.env.SUCCESS_URL || 'https://doctor-diet.pk/checkout/success';
-const FAILURE_URL = process.env.FAILURE_URL || 'https://doctor-diet.pk/checkout/cancel';
+const PAYFAST_BASE_URL      = process.env.PAYFAST_BASE_URL || 'https://ipg.apps.net.pk/Ecommerce/api';
+const MERCHANT_ID           = process.env.MERCHANT_ID;
+const SECURED_KEY           = process.env.SECURED_KEY;
+const SUCCESS_URL           = process.env.SUCCESS_URL || 'https://doctor-diet.pk/checkout/success';
+const FAILURE_URL           = process.env.FAILURE_URL || 'https://doctor-diet.pk/checkout/cancel';
+// These point to Railway — PayFast calls these, Railway then redirects to SUCCESS/FAILURE_URL
+const PAYFAST_SUCCESS_URL   = process.env.PAYFAST_SUCCESS_URL || 'https://your-railway-app.up.railway.app/payment/success';
+const PAYFAST_FAILURE_URL   = process.env.PAYFAST_FAILURE_URL || 'https://your-railway-app.up.railway.app/payment/cancel';
+const CHECKOUT_URL          = process.env.CHECKOUT_URL || PAYFAST_FAILURE_URL;
 
 // And in formFields, use these directly again:
 
@@ -113,9 +117,9 @@ app.post('/api/checkout', async (req, res) => {
       CUSTOMER_NAME:          customerName.trim(),
       CUSTOMER_CITY:          customerCity,
       TXNDESC:                `${planName} - ${billingCycle}`,
-      PAYFAST_SUCCESS_URL:    successUrl,  // ← Railway URL
-      FAILURE_URL:            failureUrl,  // ← Railway URL
-      CHECKOUT_URL:           failureUrl,
+      PAYFAST_SUCCESS_URL:    PAYFAST_SUCCESS_URL,   // ← Railway URL
+      FAILURE_URL:            PAYFAST_FAILURE_URL,   // ← Railway URL
+      CHECKOUT_URL:           CHECKOUT_URL,
       VERSION:                'WOOCOM-APPS-PAYMENT-0.9',
     };
 
