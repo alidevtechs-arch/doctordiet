@@ -20,9 +20,9 @@ const SUCCESS_URL = process.env.SUCCESS_URL || 'https://doctor-diet.pk/checkout/
 const FAILURE_URL = process.env.FAILURE_URL || 'https://doctor-diet.pk/checkout/cancel';
 
 // And in formFields, use these directly again:
-SUCCESS_URL: successUrl,
-FAILURE_URL: failureUrl,
-CHECKOUT_URL: failureUrl,
+SUCCESS_URL= successUrl,
+FAILURE_URL= failureUrl,
+CHECKOUT_URL= failureUrl,
 
 const getClientIp = (req) =>
   (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '127.0.0.1';
