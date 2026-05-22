@@ -1,5 +1,7 @@
+
 require('dotenv').config();
 
+const { createClient } = require('@supabase/supabase-js');
 const express = require('express');
 const cors    = require('cors');
 const axios   = require('axios');
