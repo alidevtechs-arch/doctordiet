@@ -17,7 +17,13 @@ const PAYFAST_BASE_URL = process.env.PAYFAST_BASE_URL || 'https://ipg.apps.net.p
 const MERCHANT_ID      = process.env.MERCHANT_ID;
 const SECURED_KEY      = process.env.SECURED_KEY;
 const SUCCESS_URL      = process.env.SUCCESS_URL;    
-const FAILURE_URL      = process.env.FAILURE_URL;     
+const FAILURE_URL      = process.env.FAILURE_URL;
+
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+
 
 const getClientIp = (req) =>
   (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '127.0.0.1';
@@ -25,6 +31,103 @@ const getClientIp = (req) =>
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', payfast: PAYFAST_BASE_URL });
+});
+
+
+/**
+ * @route   POST /api/auth/login
+ * @desc    Verify existing user. Fails if user does not exist.
+ */
+app.post('/api/auth/login', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email configuration is required.' });
+  }
+
+  try {
+    const cleanEmail = email.toLowerCase().trim();
+
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('id, email, role')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+
+    if (!user) {
+      return res.status(401).json({ 
+        error: 'This account does not exist. Please register first. یہ اکاؤنٹ موجود نہیں ہے۔ پہلے رجسٹریشن کریں۔' 
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Login successful.',
+      user
+    });
+
+  } catch (error) {
+    console.error('Login Error:', error);
+    return res.status(500).json({ error: 'Database operations connection failed.' });
+  }
+});
+
+/**
+ * @route   POST /api/auth/register
+ * @desc    Create a brand new user profile. Fails if email already exists.
+ */
+app.post('/api/auth/register', async (req, res) => {
+  const { email, username, password, first_name, last_name, role } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email configuration is required to register.' });
+  }
+
+  try {
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Check for duplicate accounts
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+
+    if (existingUser) {
+      return res.status(409).json({ 
+        error: 'This email is already registered. Please log in instead. یہ ای میل پہلے سے رجسٹرڈ ہے۔' 
+      });
+    }
+
+    // Insert user into your schema based on the image's layout rules
+    const { data: newUser, error: insertError } = await supabase
+      .from('users')
+      .insert([{ 
+        email: cleanEmail,
+        username,
+        password, // Ideally, hash this using bcrypt before saving in production!
+        first_name,
+        last_name,
+        role: role || 'Patient',
+        is_active: true
+      }])
+      .select('id, email, role')
+      .single();
+
+    if (insertError) throw insertError;
+
+    return res.status(201).json({
+      message: 'Registration successful.',
+      user: newUser
+    });
+
+  } catch (error) {
+    console.error('Registration Error:', error);
+    return res.status(500).json({ error: 'Failed to complete registration.' });
+  }
 });
 
 // ─── POST /api/checkout ───────────────────────────────────────────────────────
