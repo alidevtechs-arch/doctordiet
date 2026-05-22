@@ -38,39 +38,33 @@ app.get('/health', (req, res) => {
 
 /**
  * @route   POST /api/payments/fulfill-subscription
- * @desc    Updates order status and provisions a subscription row using user_id from client
+ * @desc    Directly inserts a verified client subscription into the subscriptions table
  */
 app.post('/api/payments/fulfill-subscription', async (req, res) => {
-  const { basket_id, gopayfast_txn_id, user_id } = req.body;
+  const { user_id, plan_name } = req.body;
 
-  if (!basket_id) {
-    return res.status(400).json({ error: 'Basket identification mapping parameter is required.' });
-  }
   if (!user_id) {
-    return res.status(400).json({ error: 'User authentication ID is required to allocate subscriptions.' });
+    return res.status(400).json({ error: 'User authentication ID is required.' });
+  }
+  if (!plan_name) {
+    return res.status(400).json({ error: 'Subscription plan type name is required.' });
   }
 
   try {
-    // 1. Update the original order status configuration record
-    const { data: order, error: fetchError } = await supabase
-      .from('orders')
-      .update({
-        status: 'success',
-        gopayfast_txn_id: gopayfast_txn_id || null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('basket_id', basket_id)
-      .select()
-      .maybeSingle();
-
-    if (fetchError) throw fetchError;
-    if (!order) {
-      return res.status(404).json({ error: 'Matching order transaction footprint not found.' });
+    // 1. Map the incoming plan name to your database 'subs' enum type if necessary.
+    // Ensure this matches the exact casing expected by your Supabase 'subs' custom enum!
+    let subscriptionType = 'Basic'; 
+    if (plan_name.toLowerCase().includes('pro') || plan_name.toLowerCase().includes('clinic')) {
+      subscriptionType = 'Clinic Pro'; 
+    } else if (plan_name.toLowerCase().includes('family')) {
+      subscriptionType = 'Family Plan';
+    } else if (plan_name.toLowerCase().includes('personal')) {
+      subscriptionType = 'Personal Plan';
+    } else {
+      subscriptionType = plan_name; // Fallback to raw string if enum values match exactly
     }
 
-    const subscriptionType = order.plan_name || 'Basic';
-
-    // 2. Prevent duplicate entries for this specific tier variant
+    // 2. Optional: Avoid duplicate active entries for the exact same plan tier
     const { data: existingSub, error: subCheckError } = await supabase
       .from('subscriptions')
       .select('id')
@@ -80,28 +74,35 @@ app.post('/api/payments/fulfill-subscription', async (req, res) => {
 
     if (subCheckError) throw subCheckError;
 
-    // 3. Insert fresh subscription mapping parameters if absent (Bypasses duplicate constraints)
-    if (!existingSub) {
-      const { error: insertError } = await supabase
-        .from('subscriptions')
-        .insert([
-          {
-            user_id: parseInt(user_id, 10),
-            subscription_type: subscriptionType
-          }
-        ]);
-
-      if (insertError) throw insertError;
+    if (existingSub) {
+      return res.status(200).json({
+        message: 'This subscription tier is already active for this user profile.',
+        subscriptionId: existingSub.id
+      });
     }
 
-    return res.status(200).json({
-      message: 'Payment verified and subscription provisioned successfully.',
-      order
+    // 3. Directly insert into the subscriptions table (Per image_41dab2.png schema)
+    const { data: newSubscription, error: insertError } = await supabase
+      .from('subscriptions')
+      .insert([
+        {
+          user_id: parseInt(user_id, 10),
+          subscription_type: subscriptionType // Writes directly to your 'subs' custom type field
+        }
+      ])
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    return res.status(201).json({
+      message: 'Subscription successfully recorded and activated.',
+      subscription: newSubscription
     });
 
   } catch (error) {
-    console.error('Subscription Fulfillment Failure:', error);
-    return res.status(500).json({ error: 'Failed to complete internal payment configuration provisioning workflows.' });
+    console.error('Direct Subscription Provisioning Failure:', error);
+    return res.status(500).json({ error: 'Server failed to write subscription mapping record.' });
   }
 });
 
