@@ -1,19 +1,17 @@
 
-require('dotenv').config();
-
+import 'dotenv/config'; // Replaces require('dotenv').config()
 import OpenAI from 'openai';
-
-
-const { createClient } = require('@supabase/supabase-js');
-const express = require('express');
-const cors    = require('cors');
-const axios   = require('axios');
-const qs      = require('qs');
+import { createClient } from '@supabase/supabase-js'; // Replaces require() destructuring
+import express from 'express';
+import cors from 'cors';
+import axios from 'axios';
+import qs from 'qs';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 // UAT (sandbox) credentials — use these for testing
