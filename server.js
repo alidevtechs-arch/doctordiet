@@ -37,6 +37,75 @@ app.get('/health', (req, res) => {
 
 
 /**
+ * @route   POST /api/payments/fulfill-subscription
+ * @desc    Updates order status and provisions a subscription row using user_id from client
+ */
+app.post('/api/payments/fulfill-subscription', async (req, res) => {
+  const { basket_id, gopayfast_txn_id, user_id } = req.body;
+
+  if (!basket_id) {
+    return res.status(400).json({ error: 'Basket identification mapping parameter is required.' });
+  }
+  if (!user_id) {
+    return res.status(400).json({ error: 'User authentication ID is required to allocate subscriptions.' });
+  }
+
+  try {
+    // 1. Update the original order status configuration record
+    const { data: order, error: fetchError } = await supabase
+      .from('orders')
+      .update({
+        status: 'success',
+        gopayfast_txn_id: gopayfast_txn_id || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('basket_id', basket_id)
+      .select()
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!order) {
+      return res.status(404).json({ error: 'Matching order transaction footprint not found.' });
+    }
+
+    const subscriptionType = order.plan_name || 'Basic';
+
+    // 2. Prevent duplicate entries for this specific tier variant
+    const { data: existingSub, error: subCheckError } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('user_id', parseInt(user_id, 10))
+      .eq('subscription_type', subscriptionType)
+      .maybeSingle();
+
+    if (subCheckError) throw subCheckError;
+
+    // 3. Insert fresh subscription mapping parameters if absent (Bypasses duplicate constraints)
+    if (!existingSub) {
+      const { error: insertError } = await supabase
+        .from('subscriptions')
+        .insert([
+          {
+            user_id: parseInt(user_id, 10),
+            subscription_type: subscriptionType
+          }
+        ]);
+
+      if (insertError) throw insertError;
+    }
+
+    return res.status(200).json({
+      message: 'Payment verified and subscription provisioned successfully.',
+      order
+    });
+
+  } catch (error) {
+    console.error('Subscription Fulfillment Failure:', error);
+    return res.status(500).json({ error: 'Failed to complete internal payment configuration provisioning workflows.' });
+  }
+});
+
+/**
  * @route   POST /api/auth/login
  * @desc    Verify existing user. Fails if user does not exist.
  */
