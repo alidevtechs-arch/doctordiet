@@ -1,6 +1,9 @@
 
 require('dotenv').config();
 
+import OpenAI from 'openai';
+
+
 const { createClient } = require('@supabase/supabase-js');
 const express = require('express');
 const cors    = require('cors');
@@ -24,7 +27,9 @@ const FAILURE_URL      = process.env.FAILURE_URL;
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
-
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY, // Set this in your Railway Variables tab
+});
 
 
 const getClientIp = (req) =>
@@ -33,6 +38,99 @@ const getClientIp = (req) =>
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', payfast: PAYFAST_BASE_URL });
+});
+
+
+/**
+ * @route   POST /api/ai/generate-diet-plan
+ * @desc    Accepts patient vectors, fetches AI plan, and automatically logs it to history
+ */
+app.post('/api/ai/generate-diet-plan', async (req, res) => {
+  const { profile, medicalHistory, labParameters, drugHistory, foodPreference, user_id } = req.body;
+
+  if (!profile || !medicalHistory) {
+    return res.status(400).json({ error: 'Incomplete clinical parameters received.' });
+  }
+
+  const clinicalPrompt = `
+    You are an expert clinical dietitian specializing in clinical nutrition for patients in Pakistan.
+    Analyze the following multi-step assessment data to construct a comprehensive, disease-specific diet plan:
+
+    Patient Profile: ${JSON.stringify(profile)}
+    Medical History: ${JSON.stringify(medicalHistory)}
+    Lab Parameters: ${JSON.stringify(labParameters)}
+    Drug History: ${JSON.stringify(drugHistory)}
+    Food Preferences: ${JSON.stringify(foodPreference)}
+
+    Requirements:
+    1. The meal plan structure must be culturally appropriate for Pakistan (using local ingredients like Chapati, Daal, Sabzi).
+    2. Adjust nutrition rules strictly according to their lab parameters and medical history.
+    3. Provide an Urdu explanation summary using simple language (in Urdu script).
+    4. Return your answer strictly as a raw JSON object matching this exact structure with no markdown wrapper around it:
+
+    {
+      "summary": "Clinical analysis overview string here",
+      "urduExplanation": "اردو میں وضاحتی خلاصہ یہاں درج کریں",
+      "allowedFoods": ["food item 1"],
+      "avoidFoods": ["food item 1"],
+      "medicalNotes": "Specific notes here",
+      "safetyRules": "Critical compliance red lines here",
+      "meals": [
+        {
+          "day": 1,
+          "breakfast": "Items",
+          "midMorningSnack": "Items",
+          "lunch": "Items",
+          "eveningSnack": "Items",
+          "dinner": "Items"
+        }
+      ]
+    }
+  `;
+
+  try {
+    // 1. Request processing structure from OpenAI
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a professional medical API that outputs strict, valid JSON matching requested parameters exactly.' },
+        { role: 'user', content: clinicalPrompt }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const rawResponse = completion.choices[0].message.content;
+    const generatedJson = JSON.parse(rawResponse);
+
+    // 2. AUTOMATED HISTORY STORAGE LOGIC
+    // If a logged-in user context is provided, save it directly to 'generated_plans'
+    if (user_id) {
+      const duration = foodPreference?.planDuration || '7-days';
+      
+      const { error: dbError } = await supabase
+        .from('generated_plans')
+        .insert([
+          {
+            user_id: parseInt(user_id, 10),
+            plan_duration: duration,
+            assessment_inputs: { profile, medicalHistory, labParameters, drugHistory, foodPreference },
+            generated_layout: generatedJson
+          }
+        ]);
+
+      if (dbError) {
+        console.error('Database history storage failure:', dbError);
+        // We do not block the request loop if logging history fails, so the user still gets their plan
+      }
+    }
+
+    // 3. Respond with the generated AI plan
+    return res.status(200).json(generatedJson);
+
+  } catch (error) {
+    console.error('Generation Flow Pipeline Failure:', error);
+    return res.status(500).json({ error: 'AI generation engine failed to compile nutrition structures.' });
+  }
 });
 
 
