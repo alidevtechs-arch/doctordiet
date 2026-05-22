@@ -53,13 +53,13 @@ app.post('/api/payments/fulfill-subscription', async (req, res) => {
   try {
     // 1. Map the incoming plan name to your database 'subs' enum type if necessary.
     // Ensure this matches the exact casing expected by your Supabase 'subs' custom enum!
-    let subscriptionType = 'Basic'; 
+    let subscriptionType = 'starter'; 
     if (plan_name.toLowerCase().includes('pro') || plan_name.toLowerCase().includes('clinic')) {
       subscriptionType = 'Clinic Pro'; 
     } else if (plan_name.toLowerCase().includes('family')) {
-      subscriptionType = 'Family Plan';
+      subscriptionType = 'Family';
     } else if (plan_name.toLowerCase().includes('personal')) {
-      subscriptionType = 'Personal Plan';
+      subscriptionType = 'Personal';
     } else {
       subscriptionType = plan_name; // Fallback to raw string if enum values match exactly
     }
