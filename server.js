@@ -254,6 +254,61 @@ app.put('/api/admin/demo-requests/:id/status', async (req, res) => {
   }
 });
 
+
+/**
+ * @route   POST /api/demo/request
+ * @desc    Create a new clinical platform demo request for a user
+ */
+app.post('/api/demo/request', async (req, res) => {
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'User authentication ID is required.' });
+  }
+
+  try {
+    // 1. Optional check: Prevent duplicate pending requests for the same user
+    const { data: existingRequest, error: checkError } = await supabase
+      .from('demo_request')
+      .select('id')
+      .eq('user_id', user_id)
+      .eq('stat', 'pending')
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+
+    if (existingRequest) {
+      return res.status(409).json({ 
+        error: 'You already have a pending demo request. Our team will contact you shortly!' 
+      });
+    }
+
+    // 2. Insert the new request into the demo_request table
+    const { data: newRequest, error: insertError } = await supabase
+      .from('demo_request')
+      .insert([
+        { 
+          user_id: parseInt(user_id, 10), 
+          stat: 'pending' // Matches your status_new database schema rule
+        }
+      ])
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    return res.status(201).json({
+      message: 'Demo request logged successfully.',
+      newRequest
+    });
+
+  } catch (error) {
+    console.error('Demo Insertion Error:', error);
+    return res.status(500).json({ error: 'Failed to process demo request on the server.' });
+  }
+});
+
+
 // ─── POST /api/checkout ───────────────────────────────────────────────────────
 app.post('/api/checkout', async (req, res) => {
   try {
