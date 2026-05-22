@@ -132,6 +132,128 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+
+// ==========================================
+// ADMIN DASHBOARD METRICS ENDPOINTS
+// ==========================================
+
+/**
+ * @route   GET /api/admin/metrics
+ * @desc    Fetch aggregated platform user demographics and subscription counts
+ */
+app.get('/api/admin/metrics', async (req, res) => {
+  try {
+    // 1. Fetch total users breakdown
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('role');
+
+    if (userError) throw userError;
+
+    let totalUsers = users.length;
+    let totalPatients = users.filter(u => u.role === 'Patient').length;
+    let totalDoctors = users.filter(u => u.role === 'Doctor').length;
+
+    // 2. Fetch subscription metrics grouped by type
+    const { data: subs, error: subError } = await supabase
+      .from('subscriptions')
+      .select('subscription_type');
+
+    if (subError) throw subError;
+
+    // Accumulate individual subscription variant counts dynamically
+    const subscriptionCounts = {};
+    subs.forEach(s => {
+      const type = s.subscription_type || 'Unknown';
+      subscriptionCounts[type] = (subscriptionCounts[type] || 0) + 1;
+    });
+
+    return res.status(200).json({
+      userStats: { totalUsers, totalPatients, totalDoctors },
+      subscriptionCounts
+    });
+  } catch (error) {
+    console.error('Metrics Engine Failure:', error);
+    return res.status(500).json({ error: 'Failed to extract system performance metrics.' });
+  }
+});
+
+/**
+ * @route   GET /api/admin/demo-requests
+ * @desc    Fetch individual detailed demo records paired with daily operational metrics
+ */
+app.get('/api/admin/demo-requests', async (req, res) => {
+  try {
+    // 1. Fetch demo requests joined with user profile identities
+    const { data: requests, error: reqError } = await supabase
+      .from('demo_request')
+      .select(`
+        id,
+        stat,
+        created_at,
+        user_id,
+        users (
+          username,
+          email,
+          first_name,
+          last_name
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (reqError) throw reqError;
+
+    // 2. Compute timeline and threshold parameters
+    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    let pendingCount = requests.filter(r => r.stat === 'pending').length;
+    let doneCount = requests.filter(r => r.stat === 'done').length;
+    let totalRequestsReceivedToday = requests.filter(r => {
+      return r.created_at && r.created_at.startsWith(todayStr);
+    }).length;
+
+    return res.status(200).json({
+      demoStats: { pendingCount, doneCount, totalRequestsReceivedToday },
+      requestsList: requests
+    });
+  } catch (error) {
+    console.error('Demo Processing Failure:', error);
+    return res.status(500).json({ error: 'Failed to parse operational demo requests.' });
+  }
+});
+
+/**
+ * @route   PUT /api/admin/demo-requests/:id/status
+ * @desc    Advance demo operational lifecycle status from pending to done
+ */
+app.put('/api/admin/demo-requests/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (status !== 'done') {
+    return res.status(400).json({ error: 'System architecture permissions strictly allow state transitions to done only.' });
+  }
+
+  try {
+    const { data: updatedRequest, error: updateError } = await supabase
+      .from('demo_request')
+      .update({ stat: 'done' })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    return res.status(200).json({
+      message: 'Demo request marked as completed successfully.',
+      updatedRequest
+    });
+  } catch (error) {
+    console.error('Status Modification Failure:', error);
+    return res.status(500).json({ error: 'Failed to update workflow execution status.' });
+  }
+});
+
 // ─── POST /api/checkout ───────────────────────────────────────────────────────
 app.post('/api/checkout', async (req, res) => {
   try {
