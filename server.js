@@ -180,11 +180,11 @@ app.get('/api/admin/metrics', async (req, res) => {
 
 /**
  * @route   GET /api/admin/demo-requests
- * @desc    Fetch individual detailed demo records paired with daily operational metrics
+ * @desc    Fetch individual detailed demo records paired with physical addresses
  */
 app.get('/api/admin/demo-requests', async (req, res) => {
   try {
-    // 1. Fetch demo requests joined with user profile identities
+    // Added address column query selection parameters
     const { data: requests, error: reqError } = await supabase
       .from('demo_request')
       .select(`
@@ -192,6 +192,7 @@ app.get('/api/admin/demo-requests', async (req, res) => {
         stat,
         created_at,
         user_id,
+        address, 
         users (
           username,
           email,
@@ -203,8 +204,7 @@ app.get('/api/admin/demo-requests', async (req, res) => {
 
     if (reqError) throw reqError;
 
-    // 2. Compute timeline and threshold parameters
-    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const todayStr = new Date().toISOString().split('T')[0];
     
     let pendingCount = requests.filter(r => r.stat === 'pending').length;
     let doneCount = requests.filter(r => r.stat === 'done').length;
@@ -257,17 +257,20 @@ app.put('/api/admin/demo-requests/:id/status', async (req, res) => {
 
 /**
  * @route   POST /api/demo/request
- * @desc    Create a new clinical platform demo request for a user
+ * @desc    Create a new clinical platform demo request for a user including address
  */
 app.post('/api/demo/request', async (req, res) => {
-  const { user_id } = req.body;
+  const { user_id, address } = req.body;
 
   if (!user_id) {
     return res.status(400).json({ error: 'User authentication ID is required.' });
   }
+  if (!address || !address.trim()) {
+    return res.status(400).json({ error: 'A valid operational clinic or residential address is required.' });
+  }
 
   try {
-    // 1. Optional check: Prevent duplicate pending requests for the same user
+    // Check for duplicate pending requests
     const { data: existingRequest, error: checkError } = await supabase
       .from('demo_request')
       .select('id')
@@ -283,13 +286,14 @@ app.post('/api/demo/request', async (req, res) => {
       });
     }
 
-    // 2. Insert the new request into the demo_request table
+    // Insert the new request with address mapping parameters
     const { data: newRequest, error: insertError } = await supabase
       .from('demo_request')
       .insert([
         { 
           user_id: parseInt(user_id, 10), 
-          stat: 'pending' // Matches your status_new database schema rule
+          stat: 'pending',
+          address: address.trim() // Writes to your newly added database column
         }
       ])
       .select()
