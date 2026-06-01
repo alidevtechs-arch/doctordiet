@@ -6,8 +6,8 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import qs from 'qs';
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 app.use(cors());
