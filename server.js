@@ -346,7 +346,7 @@ app.post('/api/auth/login', async (req, res) => {
     // ✅ Include password_hash in the select
     const { data: user, error: fetchError } = await supabase
       .from('users')
-      .select('id, email, role, password_hash')  // fetch the hashed password
+      .select('id, email, role, password')  // fetch the hashed password
       .eq('email', cleanEmail)
       .maybeSingle();
 
