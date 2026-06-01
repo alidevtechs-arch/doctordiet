@@ -33,11 +33,97 @@ const openai = new OpenAI({
 const getClientIp = (req) =>
   (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '127.0.0.1';
 
+
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', payfast: PAYFAST_BASE_URL });
 });
 
+function generatePromoCode(businessName) {
+    const cleanName = businessName
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '') // Remove spaces and special characters
+        .substring(0, 10);         // Keep it reasonably short
+    
+    // Append 4 random alphanumeric characters to ensure uniqueness
+    const randomString = crypto.randomBytes(2).toString('hex').toUpperCase();
+    
+    return `${cleanName}-${randomString}`;
+}
+
+/**
+ * POST /api/partners/apply
+ * Creates a partner profile and auto-generates their master promo code.
+ */
+app.post('/apply', async (req, res) => {
+    const { userId, businessName } = req.body;
+
+    // 1. Input Validation
+    if (!userId || !businessName) {
+        return res.status(400).json({ 
+            error: 'Missing required fields: userId and businessName are required.' 
+        });
+    }
+
+    try {
+        // 2. Insert into partner_profiles table
+        const { data: partnerData, error: partnerError } = await supabase
+            .from('partner_profiles')
+            .insert([
+                { 
+                    user_id: userId, 
+                    business_name: businessName,
+                    status: 'approved' // Setting to approved immediately based on your prompt
+                }
+            ])
+            .select()
+            .single();
+
+        if (partnerError) {
+            console.error('Error creating partner profile:', partnerError);
+            return res.status(500).json({ error: 'Failed to create partner profile.' });
+        }
+
+        const partnerId = partnerData.id;
+
+        // 3. Generate and insert the unique promo code
+        const newPromoCode = generatePromoCode(businessName);
+        
+        const { data: promoData, error: promoError } = await supabase
+            .from('promo_codes')
+            .insert([
+                { 
+                    partner_id: partnerId, 
+                    code: newPromoCode,
+                    is_master: true
+                }
+            ])
+            .select()
+            .single();
+
+        if (promoError) {
+            console.error('Error generating promo code:', promoError);
+            // Note: In a strict production system, if this fails, you might want to 
+            // rollback the partner_profile creation using a Postgres RPC transaction.
+            return res.status(500).json({ error: 'Profile created, but code generation failed.' });
+        }
+
+        // 4. Return success response
+        return res.status(201).json({
+            message: 'Partner profile and promo code created successfully.',
+            partner: {
+                id: partnerData.id,
+                businessName: partnerData.business_name,
+                status: partnerData.status
+            },
+            promoCode: promoData.code
+        });
+
+    } catch (err) {
+        console.error('Unexpected server error:', err);
+        return res.status(500).json({ error: 'An unexpected error occurred.' });
+    }
+});
 
 /**
  * @route   POST /api/ai/generate-diet-plan
@@ -252,18 +338,20 @@ app.post('/api/payments/fulfill-subscription', async (req, res) => {
  * @desc    Verify existing user. Fails if user does not exist.
  */
 app.post('/api/auth/login', async (req, res) => {
-  const { email } = req.body;
+  const { email, password } = req.body;
 
-  if (!email) {
-    return res.status(400).json({ error: 'Email configuration is required.' });
+  // Validate both fields upfront
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
   }
 
   try {
     const cleanEmail = email.toLowerCase().trim();
 
+    // ✅ Include password_hash in the select
     const { data: user, error: fetchError } = await supabase
       .from('users')
-      .select('id, email, role')
+      .select('id, email, role, password_hash')  // fetch the hashed password
       .eq('email', cleanEmail)
       .maybeSingle();
 
@@ -271,13 +359,33 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!user) {
       return res.status(401).json({ 
-        error: 'This account does not exist. Please register first. یہ اکاؤنٹ موجود نہیں ہے۔ پہلے رجسٹریشن کریں۔' 
+        error: 'This account does not exist. Please register first. یہ اکاؤنٹ موجود نہیں ہے۔ پہلے رجسٹریشن کریں۔'
       });
     }
 
+    // ✅ Compare provided password with stored hash
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+
+    if (!passwordMatch) {
+      return res.status(401).json({ 
+        error: 'Incorrect password. Please try again. غلط پاس ورڈ۔ دوبارہ کوشش کریں۔'
+      });
+    }
+
+    // ✅ Never send password_hash back to client
+    const { password_hash, ...safeUser } = user;
+
+    // ✅ Issue a JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
     return res.status(200).json({
       message: 'Login successful.',
-      user
+      token,
+      user: safeUser
     });
 
   } catch (error) {
