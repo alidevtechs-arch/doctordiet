@@ -338,7 +338,7 @@ app.post('/api/auth/login', async (req, res) => {
   const { email, password:inputpassword } = req.body;
 
   // Validate both fields upfront
-  if (!email || !password) {
+  if (!email || !inputpassword) {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
 
