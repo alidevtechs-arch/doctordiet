@@ -56,66 +56,62 @@ function generatePromoCode(businessName) {
  * Creates a partner profile and auto-generates their master promo code.
  */
 app.post('/apply', async (req, res) => {
-    const { userId, businessName } = req.body;
+    // 1. Only require userId now
+    const { userId } = req.body;
 
-    // 1. Input Validation
-    if (!userId || !businessName) {
-        return res.status(400).json({ 
-            error: 'Missing required fields: userId and businessName are required.' 
-        });
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId.' });
     }
 
     try {
-        // 2. Insert into partner_profiles table
+        // 2. Fetch the username from the users table
+        const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('username')
+            .eq('id', userId)
+            .single();
+
+        if (userError || !user) {
+            console.error('User fetch error:', userError);
+            return res.status(404).json({ error: 'User not found in database.' });
+        }
+
+        const businessName = user.username; // Use username as the business name
+
+        // 3. Insert into partner_profiles table
         const { data: partnerData, error: partnerError } = await supabase
             .from('partner_profiles')
-            .insert([
-                { 
-                    user_id: userId, 
-                    business_name: businessName,
-                    status: 'silver' // Setting to approved immediately based on your prompt
-                }
-            ])
+            .insert([{ 
+                user_id: userId, 
+                business_name: businessName,
+                status: 'approved' 
+            }])
             .select()
             .single();
 
         if (partnerError) {
-            console.error('Error creating partner profile:', partnerError);
+            // Handle unique constraint if they are already a partner
+            if (partnerError.code === '23505') {
+                return res.status(400).json({ error: 'You are already a registered partner.' });
+            }
             return res.status(500).json({ error: 'Failed to create partner profile.' });
         }
 
-        const partnerId = partnerData.id;
-
-        // 3. Generate and insert the unique promo code
+        // 4. Generate and insert the unique promo code
         const newPromoCode = generatePromoCode(businessName);
         
         const { data: promoData, error: promoError } = await supabase
             .from('promo_codes')
-            .insert([
-                { 
-                    partner_id: partnerId, 
-                    code: newPromoCode,
-                    is_master: true
-                }
-            ])
+            .insert([{ partner_id: partnerData.id, code: newPromoCode, is_master: true }])
             .select()
             .single();
 
-        if (promoError) {
-            console.error('Error generating promo code:', promoError);
-            // Note: In a strict production system, if this fails, you might want to 
-            // rollback the partner_profile creation using a Postgres RPC transaction.
-            return res.status(500).json({ error: 'Profile created, but code generation failed.' });
-        }
+        if (promoError) throw promoError;
 
-        // 4. Return success response
+        // 5. Return success response
         return res.status(201).json({
-            message: 'Partner profile and promo code created successfully.',
-            partner: {
-                id: partnerData.id,
-                businessName: partnerData.business_name,
-                status: partnerData.status
-            },
+            message: 'Partner profile created.',
+            partner: { businessName: partnerData.business_name },
             promoCode: promoData.code
         });
 
@@ -124,7 +120,6 @@ app.post('/apply', async (req, res) => {
         return res.status(500).json({ error: 'An unexpected error occurred.' });
     }
 });
-
 /**
  * @route   POST /api/ai/generate-diet-plan
  * @desc    Accepts patient vectors, fetches AI plan, and automatically logs it to history
