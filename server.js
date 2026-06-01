@@ -335,7 +335,7 @@ app.post('/api/payments/fulfill-subscription', async (req, res) => {
  * @desc    Verify existing user. Fails if user does not exist.
  */
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password:inputpassword } = req.body;
 
   // Validate both fields upfront
   if (!email || !password) {
@@ -361,7 +361,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // ✅ Compare provided password with stored hash
-    const passwordMatch = await bcrypt.compare(password, user.password);
+    const passwordMatch = await bcrypt.compare(inputpassword, user.password);
 
     if (!passwordMatch) {
       return res.status(401).json({ 
