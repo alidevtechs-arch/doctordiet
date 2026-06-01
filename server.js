@@ -379,7 +379,7 @@ app.post('/api/auth/login', async (req, res) => {
     // ✅ Issue a JWT token
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRETS,
       { expiresIn: '7d' }
     );
 
