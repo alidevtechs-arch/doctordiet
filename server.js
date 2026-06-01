@@ -6,13 +6,13 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import qs from 'qs';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 
 
 // ─── Config ───────────────────────────────────────────────────────────────────
