@@ -458,7 +458,7 @@ app.post('/api/auth/register', async (req, res) => {
       .insert([{ 
         email: cleanEmail,
         username: username.trim(),
-        password,          // ✅ hashed password saved
+        password: password_hash,          // ✅ hashed password saved
         first_name: first_name?.trim() || null,
         last_name: last_name?.trim() || null,
         role: safeRole,         // ✅ whitelisted role
