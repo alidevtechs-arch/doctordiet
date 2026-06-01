@@ -359,7 +359,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // ✅ Compare provided password with stored hash
-    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
       return res.status(401).json({ 
@@ -368,7 +368,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // ✅ Never send password_hash back to client
-    const { password_hash, ...safeUser } = user;
+    const { password, ...safeUser } = user;
 
     // ✅ Issue a JWT token
     const token = jwt.sign(
