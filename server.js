@@ -12,6 +12,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 
 // ─── Config ───────────────────────────────────────────────────────────────────
