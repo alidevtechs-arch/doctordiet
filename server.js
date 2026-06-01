@@ -361,10 +361,10 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // ✅ Compare provided password with stored hash
-    const passwordMatch = await bcrypt.compare(inputPassword, user.password).catch(() => false);
+    const passwordMatch = await bcrypt.compare(inputpassword, user.password).catch(() => false);
     
     // Fallback for plaintext (old users)
-    const isMatch = passwordMatch || inputPassword === user.password;
+    const isMatch = passwordMatch || inputpassword === user.password;
     
     if (!isMatch) {
       return res.status(401).json({ error: 'Incorrect password.' });
