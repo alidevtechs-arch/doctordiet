@@ -7,7 +7,9 @@ import cors from 'cors';
 import axios from 'axios';
 import qs from 'qs';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const jwt = require('jsonwebtoken');
 
 const app = express();
 app.use(cors());
