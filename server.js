@@ -73,7 +73,7 @@ app.post('/apply', async (req, res) => {
                 { 
                     user_id: userId, 
                     business_name: businessName,
-                    status: 'approved' // Setting to approved immediately based on your prompt
+                    status: 'silver' // Setting to approved immediately based on your prompt
                 }
             ])
             .select()
