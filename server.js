@@ -401,41 +401,69 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   const { email, username, password, first_name, last_name, role } = req.body;
 
-  if (!email) {
-    return res.status(400).json({ error: 'Email configuration is required to register.' });
+  // ✅ Validate all required fields
+  if (!email || !password || !username) {
+    return res.status(400).json({ error: 'Email, username, and password are required.' });
+  }
+
+  // ✅ Basic password strength check
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   }
 
   try {
     const cleanEmail = email.toLowerCase().trim();
 
-    // Check for duplicate accounts
-    const { data: existingUser, error: checkError } = await supabase
+    // Check for duplicate email
+    const { data: existingEmail, error: emailCheckError } = await supabase
       .from('users')
       .select('id')
       .eq('email', cleanEmail)
       .maybeSingle();
 
-    if (checkError) throw checkError;
+    if (emailCheckError) throw emailCheckError;
 
-    if (existingUser) {
+    if (existingEmail) {
       return res.status(409).json({ 
-        error: 'This email is already registered. Please log in instead. یہ ای میل پہلے سے رجسٹرڈ ہے۔' 
+        error: 'This email is already registered. Please log in instead. یہ ای میل پہلے سے رجسٹرڈ ہے۔'
       });
     }
 
-    // Insert user into your schema based on the image's layout rules
+    // ✅ Check for duplicate username
+    const { data: existingUsername, error: usernameCheckError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', username.trim())
+      .maybeSingle();
+
+    if (usernameCheckError) throw usernameCheckError;
+
+    if (existingUsername) {
+      return res.status(409).json({ 
+        error: 'This username is already taken. Please choose another.'
+      });
+    }
+
+    // ✅ Hash the password before saving — NEVER store plaintext
+    const password_hash = await bcrypt.hash(password, 12);
+
+    // ✅ Whitelist the role — never trust user-supplied roles directly
+    const allowedRoles = ['Patient', 'Doctor', 'Admin'];
+    const safeRole = allowedRoles.includes(role) ? role : 'Patient';
+
+    // Insert user
     const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert([{ 
         email: cleanEmail,
-        username,
-        password, // Ideally, hash this using bcrypt before saving in production!
-        first_name,
-        last_name,
-        role: role || 'Patient',
+        username: username.trim(),
+        password_hash,          // ✅ hashed password saved
+        first_name: first_name?.trim() || null,
+        last_name: last_name?.trim() || null,
+        role: safeRole,         // ✅ whitelisted role
         is_active: true
       }])
-      .select('id, email, role')
+      .select('id, email, username, role')   // ✅ password_hash NOT returned
       .single();
 
     if (insertError) throw insertError;
