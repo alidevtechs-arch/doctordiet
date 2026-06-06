@@ -80,6 +80,93 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/partners/portal
+// Partner tab: the logged-in partner's own stats
+// Tables: partner_profiles, promo_codes, referral_earnings, generated_plans
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/partner/portal', authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    // get partner profile
+    const { data: profile, error: profileError } = await supabase
+      .from('partner_profiles')
+      .select('id, business_name, status, total_earnings')
+      .eq('user_id', userId)
+      .single();
+ 
+    if (profileError || !profile) {
+      return res.status(404).json({ error: 'Partner profile not found.' });
+    }
+ 
+    // get master promo code
+    const { data: promoRow } = await supabase
+      .from('promo_codes')
+      .select('code')
+      .eq('partner_id', profile.id)
+      .eq('is_master', true)
+      .single();
+ 
+    // get all earnings for this partner
+    const { data: earnings } = await supabase
+      .from('referral_earnings')
+      .select('amount, status, created_at, plan_id')
+      .eq('partner_id', profile.id)
+      .order('created_at', { ascending: false });
+ 
+    const totalEarned   = earnings?.reduce((s, e) => s + parseFloat(e.amount), 0).toFixed(2) ?? '0.00';
+    const pendingPayout = earnings?.filter(e => e.status === 'pending').reduce((s, e) => s + parseFloat(e.amount), 0).toFixed(2) ?? '0.00';
+    const totalReferrals = earnings?.length ?? 0;
+ 
+    // recent 4 earnings with plan info
+    const recentFour = earnings?.slice(0, 4) ?? [];
+    const planIds    = recentFour.map(e => e.plan_id).filter(Boolean);
+ 
+    let planDurations = {};
+    if (planIds.length) {
+      const { data: plans } = await supabase
+        .from('generated_plans')
+        .select('id, plan_duration')
+        .in('id', planIds);
+      plans?.forEach(p => { planDurations[p.id] = p.plan_duration; });
+    }
+ 
+    const recentEarnings = recentFour.map(e => ({
+      patientId: e.plan_id ?? '—',
+      plan:      planDurations[e.plan_id] ?? 'Standard',
+      amount:    parseFloat(e.amount).toFixed(2),
+      date:      new Date(e.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+    }));
+ 
+    // next payout date (1st of next month)
+    const next = new Date();
+    next.setMonth(next.getMonth() + 1, 1);
+    const nextPayoutDate = next.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+ 
+    const initials = profile.business_name
+      .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+ 
+    return res.json({
+      businessName:    profile.business_name,
+      initials,
+      partnerType:     'Doctor',        // extend if you add a type column
+      commissionRate:  15,              // extend if you add a rate column
+      promoCode:       promoRow?.code ?? '—',
+      totalReferrals,
+      totalEarned,
+      pendingPayout,
+      conversionRate:  68,              // extend with click tracking to make dynamic
+      nextPayoutDate,
+      recentEarnings,
+    });
+  } catch (err) {
+    console.error('Portal error:', err);
+    return res.status(500).json({ error: 'Failed to load partner portal.' });
+  }
+});
+
+
 // ✅ Route now uses authenticateToken middleware
 app.post('/apply', authenticateToken, async (req, res) => {
   // ✅ userId comes from the verified token, not the body
