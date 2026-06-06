@@ -82,7 +82,7 @@ const authenticateToken = (req, res, next) => {
 
 
 // GET /api/settings/commission — anyone authenticated can read
-router.get('/commission', authenticateToken, async (req, res) => {
+app.get('/api/settings/commission', authenticateToken, async (req, res) => {
   const { data, error } = await supabase
     .from('settings')
     .select('value')
@@ -94,7 +94,7 @@ router.get('/commission', authenticateToken, async (req, res) => {
 });
 
 // PATCH /api/settings/commission — admin only
-router.patch('/commission', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/settings/commission', authenticateToken, requireAdmin, async (req, res) => {
   const { rate } = req.body;
   if (!rate || rate < 1 || rate > 100) {
     return res.status(400).json({ error: 'Rate must be between 1 and 100.' });
