@@ -493,7 +493,7 @@ Requirements:
         }
       }
       
-      const { error: dbError } = await supabase
+      const {data:insertedPlan, error: dbError } = await supabase
         .from('generated_plans')
         .insert([
           {
