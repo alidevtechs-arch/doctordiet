@@ -473,6 +473,7 @@ Requirements:
     generatedJson.numberOfDays = numberOfDays;
 
     if (user_id) {
+      const promoCodeId = promo_code_id && !Number.isNaN(parseInt(promo_code_id, 10)) ? parseInt(promo_code_id, 10) : null;
       const { error: dbError } = await supabase
         .from('generated_plans')
         .insert([
@@ -487,7 +488,7 @@ Requirements:
               foodPreference
             },
             generated_layout: generatedJson,
-            promo_code_id:     promo_code_id ? parseInt(promo_code_id, 10) : null,
+            promo_code_id: promoCodeId,
           }
         ])
         .select('id')
