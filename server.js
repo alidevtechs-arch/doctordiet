@@ -80,6 +80,13 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
+// ── paste this right after your authenticateToken function ──
+function requireAdmin(req, res, next) {
+  if (req.user.role !== 'Admin') {
+    return res.status(403).json({ error: 'Admin access only.' });
+  }
+  next();
+}
 
 // GET /api/settings/commission — anyone authenticated can read
 app.get('/api/settings/commission', authenticateToken, async (req, res) => {
