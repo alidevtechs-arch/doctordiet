@@ -10,6 +10,7 @@ import bcrypt from 'bcrypt';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const jwt = require('jsonwebtoken');
+import crypto from 'crypto'; // ✅ add this at the top with your other imports
 
 const app = express();
 app.use(cors());
