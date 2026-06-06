@@ -59,70 +59,81 @@ function generatePromoCode(businessName) {
  * POST /api/partners/apply
  * Creates a partner profile and auto-generates their master promo code.
  */
-app.post('/apply', async (req, res) => {
-    // 1. Only require userId now
-    const { userId } = req.body;
+const jwt = require('jsonwebtoken');
 
-    if (!userId) {
-        return res.status(400).json({ error: 'Missing userId.' });
+// Middleware to verify token
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // get the part after "Bearer "
+
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided. Please log in.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // { id, email, role }
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid or expired token. Please log in again.' });
+  }
+};
+
+// ✅ Route now uses authenticateToken middleware
+app.post('/apply', authenticateToken, async (req, res) => {
+  // ✅ userId comes from the verified token, not the body
+  const userId = req.user.id;
+
+  try {
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('username')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user) {
+      return res.status(404).json({ error: 'User not found in database.' });
     }
 
-    try {
-        // 2. Fetch the username from the users table
-        const { data: user, error: userError } = await supabase
-            .from('users')
-            .select('username')
-            .eq('id', userId)
-            .single();
+    const businessName = user.username;
 
-        if (userError || !user) {
-            console.error('User fetch error:', userError);
-            return res.status(404).json({ error: 'User not found in database.' });
-        }
+    const { data: partnerData, error: partnerError } = await supabase
+      .from('partner_profiles')
+      .insert([{ 
+        user_id: userId, 
+        business_name: businessName,
+        status: 'approved' 
+      }])
+      .select()
+      .single();
 
-        const businessName = user.username; // Use username as the business name
-
-        // 3. Insert into partner_profiles table
-        const { data: partnerData, error: partnerError } = await supabase
-            .from('partner_profiles')
-            .insert([{ 
-                user_id: userId, 
-                business_name: businessName,
-                status: 'approved' 
-            }])
-            .select()
-            .single();
-
-        if (partnerError) {
-            // Handle unique constraint if they are already a partner
-            if (partnerError.code === '23505') {
-                return res.status(400).json({ error: 'You are already a registered partner.' });
-            }
-            return res.status(500).json({ error: 'Failed to create partner profile.' });
-        }
-
-        // 4. Generate and insert the unique promo code
-        const newPromoCode = generatePromoCode(businessName);
-        
-        const { data: promoData, error: promoError } = await supabase
-            .from('promo_codes')
-            .insert([{ partner_id: partnerData.id, code: newPromoCode, is_master: true }])
-            .select()
-            .single();
-
-        if (promoError) throw promoError;
-
-        // 5. Return success response
-        return res.status(201).json({
-            message: 'Partner profile created.',
-            partner: { businessName: partnerData.business_name },
-            promoCode: promoData.code
-        });
-
-    } catch (err) {
-        console.error('Unexpected server error:', err);
-        return res.status(500).json({ error: 'An unexpected error occurred.' });
+    if (partnerError) {
+      if (partnerError.code === '23505') {
+        return res.status(400).json({ error: 'You are already a registered partner.' });
+      }
+      return res.status(500).json({ error: 'Failed to create partner profile.' });
     }
+
+    const newPromoCode = generatePromoCode(businessName);
+
+    const { data: promoData, error: promoError } = await supabase
+      .from('promo_codes')
+      .insert([{ partner_id: partnerData.id, code: newPromoCode, is_master: true }])
+      .select()
+      .single();
+
+    if (promoError) throw promoError;
+
+    return res.status(201).json({
+      message: 'Partner profile created.',
+      partner: { businessName: partnerData.business_name },
+      promoCode: promoData.code,
+    });
+
+  } catch (err) {
+    console.error('Unexpected server error:', err);
+    return res.status(500).json({ error: 'An unexpected error occurred.' });
+  }
 });
 /**
  * @route   POST /api/ai/generate-diet-plan
