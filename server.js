@@ -380,7 +380,7 @@ app.post('/api/ai/generate-diet-plan', async (req, res) => {
     user_id,
     plan_duration,
     number_of_days,
-    promo_code_id
+    promo_code
   } = req.body;
 
   if (!profile || !medicalHistory) {
@@ -473,7 +473,26 @@ Requirements:
     generatedJson.numberOfDays = numberOfDays;
 
     if (user_id) {
-      const promoCodeId = promo_code_id && !Number.isNaN(parseInt(promo_code_id, 10)) ? parseInt(promo_code_id, 10) : null;
+      let promoCodeId = null;
+      let partnerId = null;
+
+      if (promo_code) {
+        const { data: promoRow, error: promoError } = await supabase
+          .from('promo_codes')
+          .select('id, partner_id')
+          .eq('code', promo_code)
+          .maybeSingle();
+      
+        if (promoError) {
+          console.error('Promo code lookup failed:', promoError);
+        }
+      
+        if (promoRow) {
+          promoCodeId = promoRow.id;
+          partnerId = promoRow.partner_id;
+        }
+      }
+      
       const { error: dbError } = await supabase
         .from('generated_plans')
         .insert([
@@ -497,7 +516,27 @@ Requirements:
       if (dbError) {
         console.error('Database history storage failure:', dbError);
       }
+
+      if (insertedPlan?.id && partnerId) {
+        const { error: earningError } = await supabase
+          .from('referral_earnings')
+          .insert([
+            {
+              partner_id: partnerId,
+              plan_id: insertedPlan.id,
+              amount: 100,
+              status: 'pending',
+            },
+          ]);
+    
+        if (earningError) {
+          console.error('Referral earning storage failure:', earningError);
+        }
+      }
+      
     }
+
+    
 
     return res.status(200).json(generatedJson);
 
