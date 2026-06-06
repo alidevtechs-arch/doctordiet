@@ -59,7 +59,7 @@ function generatePromoCode(businessName) {
  * POST /api/partners/apply
  * Creates a partner profile and auto-generates their master promo code.
  */
-const jwt = require('jsonwebtoken');
+
 
 // Middleware to verify token
 const authenticateToken = (req, res, next) => {
