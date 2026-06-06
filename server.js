@@ -379,7 +379,8 @@ app.post('/api/ai/generate-diet-plan', async (req, res) => {
     foodPreference,
     user_id,
     plan_duration,
-    number_of_days
+    number_of_days,
+    promo_code_id
   } = req.body;
 
   if (!profile || !medicalHistory) {
