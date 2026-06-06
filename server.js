@@ -86,7 +86,7 @@ const authenticateToken = (req, res, next) => {
 // Partner tab: the logged-in partner's own stats
 // Tables: partner_profiles, promo_codes, referral_earnings, generated_plans
 // ─────────────────────────────────────────────────────────────────────────────
-app.get('/api/partner/portal', authenticateToken, async (req, res) => {
+app.get('/api/partners/portal', authenticateToken, async (req, res) => {
   const userId = req.user.id;
   try {
     // get partner profile
