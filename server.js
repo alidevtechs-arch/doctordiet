@@ -102,7 +102,7 @@ app.post('/apply', authenticateToken, async (req, res) => {
       .insert([{ 
         user_id: userId, 
         business_name: businessName,
-        status: 'approved' 
+        status: 'silver' 
       }])
       .select()
       .single();
