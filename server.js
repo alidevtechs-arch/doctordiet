@@ -88,6 +88,103 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// POST /api/referral/confirm
+// Fires only after successful GoPayFast redirect
+// Looks up the most recent generated_plan for this user+promo,
+// then inserts into referral_earnings
+app.post('/api/referral/confirm', async (req, res) => {
+  const { userId, partnerId, promoCodeId } = req.body;
+
+  if (!userId || !partnerId || !promoCodeId) {
+    return res.status(400).json({ error: 'Missing required fields.' });
+  }
+
+  try {
+    // 1. find the most recent generated_plan for this user
+    //    that used this promo code and hasn't been credited yet
+    const { data: plan, error: planError } = await supabase
+      .from('generated_plans')
+      .select('id, plan_duration')
+      .eq('user_id',       parseInt(userId))
+      .eq('promo_code_id', parseInt(promoCodeId))
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (planError || !plan) {
+      // plan not generated yet — that's fine, it will be credited
+      // when the plan IS generated (see step 4 in generate route)
+      return res.status(404).json({ error: 'No plan found for this promo code yet.' });
+    }
+
+    // 2. check if referral_earning already exists for this plan
+    //    prevents double insert if user refreshes success page
+    const { data: existing } = await supabase
+      .from('referral_earnings')
+      .select('id')
+      .eq('plan_id', plan.id)
+      .maybeSingle();
+
+    if (existing) {
+      return res.status(200).json({ message: 'Referral already recorded.' });
+    }
+
+    // 3. fetch commission rate from settings
+    const { data: rateSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'commission_rate')
+      .single();
+
+    const commissionRate = parseFloat(rateSetting?.value ?? '15') / 100;
+
+    // 4. get plan price from settings based on plan_duration
+    const priceKeyMap = {
+      '1-day':  'plan_basic_price',
+      '3-days': 'plan_standard_price',
+      '7-days': 'plan_premium_price',
+    };
+    const priceKey = priceKeyMap[plan.plan_duration] ?? 'plan_basic_price';
+
+    const { data: priceSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', priceKey)
+      .single();
+
+    const planPrice     = parseFloat(priceSetting?.value ?? '19');
+    const earningAmount = parseFloat((planPrice * commissionRate).toFixed(2));
+
+    // 5. insert referral_earning
+    const { error: earningError } = await supabase
+      .from('referral_earnings')
+      .insert([{
+        partner_id: parseInt(partnerId),
+        plan_id:    plan.id,
+        amount:     earningAmount,
+        status:     'pending',
+      }]);
+
+    if (earningError) throw earningError;
+
+    // 6. update partner_profiles.total_earnings running total
+    await supabase.rpc('increment_partner_earnings', {
+      p_partner_id: parseInt(partnerId),
+      p_amount:     earningAmount,
+    });
+
+    return res.status(200).json({
+      message: 'Referral earning recorded.',
+      amount:  earningAmount,
+    });
+
+  } catch (err) {
+    console.error('Confirm referral error:', err);
+    return res.status(500).json({ error: 'Failed to record referral.' });
+  }
+});
+
+
 // GET /api/settings/commission — anyone authenticated can read
 app.get('/api/settings/commission', authenticateToken, async (req, res) => {
   const { data, error } = await supabase
@@ -388,9 +485,12 @@ Requirements:
               drugHistory,
               foodPreference
             },
-            generated_layout: generatedJson
+            generated_layout: generatedJson,
+            promo_code_id:     promo_code_id ? parseInt(promo_code_id, 10) : null,
           }
-        ]);
+        ])
+        .select('id')
+        .single();
 
       if (dbError) {
         console.error('Database history storage failure:', dbError);
