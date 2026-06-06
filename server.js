@@ -123,6 +123,7 @@ app.post('/apply', authenticateToken, async (req, res) => {
       .select()
       .single();
 
+
     if (promoError) throw promoError;
 
     return res.status(201).json({
