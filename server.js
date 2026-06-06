@@ -81,6 +81,35 @@ const authenticateToken = (req, res, next) => {
 };
 
 
+// GET /api/settings/commission — anyone authenticated can read
+router.get('/commission', authenticateToken, async (req, res) => {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'commission_rate')
+    .single();
+
+  if (error) return res.status(500).json({ error: 'Failed to load rate.' });
+  return res.json({ commissionRate: parseFloat(data.value) });
+});
+
+// PATCH /api/settings/commission — admin only
+router.patch('/commission', authenticateToken, requireAdmin, async (req, res) => {
+  const { rate } = req.body;
+  if (!rate || rate < 1 || rate > 100) {
+    return res.status(400).json({ error: 'Rate must be between 1 and 100.' });
+  }
+
+  const { error } = await supabase
+    .from('settings')
+    .update({ value: String(rate) })
+    .eq('key', 'commission_rate');
+
+  if (error) return res.status(500).json({ error: 'Failed to update rate.' });
+  return res.json({ message: 'Commission rate updated.', commissionRate: rate });
+});
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/partners/portal
 // Partner tab: the logged-in partner's own stats
@@ -99,6 +128,14 @@ app.get('/api/partners/portal', authenticateToken, async (req, res) => {
     if (profileError || !profile) {
       return res.status(404).json({ error: 'Partner profile not found.' });
     }
+
+    // inside GET /api/partners/portal
+    const { data: setting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'commission_rate')
+      .single();
+
  
     // get master promo code
     const { data: promoRow } = await supabase
@@ -159,6 +196,7 @@ app.get('/api/partners/portal', authenticateToken, async (req, res) => {
       conversionRate:  68,              // extend with click tracking to make dynamic
       nextPayoutDate,
       recentEarnings,
+       commissionRate: parseFloat(setting?.value ?? '15'),
     });
   } catch (err) {
     console.error('Portal error:', err);
