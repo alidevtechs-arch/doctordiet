@@ -71,7 +71,7 @@ const authenticateToken = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRETS);
     req.user = decoded; // { id, email, role }
     next();
   } catch (err) {
