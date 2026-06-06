@@ -526,13 +526,39 @@ Requirements:
             {
               partner_id: partnerId,
               plan_id: insertedPlan.id,
-              amount: 100,
-              status: 'pending',
+              amount: 999,
+              status: 'paid',
             },
           ]);
     
         if (earningError) {
           console.error('Referral earning storage failure:', earningError);
+        }
+      }
+
+       const { data: partnerProfile, error: partnerFetchError } = await supabase
+        .from('partner_profiles')
+        .select('earning')
+        .eq('id', partnerId)
+        .single();
+
+      if (partnerFetchError) {
+        console.error('Partner earning fetch failure:', partnerFetchError);
+      } else {
+        const currentEarning = Number(partnerProfile?.earning || 0);
+        const newEarning = currentEarning + REFERRAL_AMOUNT;
+
+        const { error: partnerUpdateError } = await supabase
+          .from('partner_profiles')
+          .update({
+            earning: newEarning,
+          })
+          .eq('id', partnerId);
+
+        if (partnerUpdateError) {
+          console.error('Partner earning update failure:', partnerUpdateError);
+        } else {
+          console.log('Partner earning updated successfully.');
         }
       }
       
