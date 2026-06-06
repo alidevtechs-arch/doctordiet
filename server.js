@@ -490,6 +490,8 @@ Requirements:
         if (promoRow) {
           promoCodeId = promoRow.id;
           partnerId = promoRow.partner_id;
+          console.log(promoCodeId);
+          console.log(partnerId);
         }
       }
       
