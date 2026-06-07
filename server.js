@@ -256,7 +256,7 @@ app.get('/api/partners/portal', authenticateToken, async (req, res) => {
       .eq('partner_id', profile.id)
       .order('created_at', { ascending: false });
  
-    const totalEarned   = profile?.reduce((s, e) => s + parseFloat(e.total_earnings), 0).toFixed(2) ?? '0.00';
+    const totalEarned = Number(profile.total_earnings || 0).toFixed(2);
     const pendingPayout = earnings?.filter(e => e.status === 'pending').reduce((s, e) => s + parseFloat(e.amount), 0).toFixed(2) ?? '0.00';
     const totalReferrals = earnings?.length ?? 0;
  
