@@ -527,7 +527,7 @@ Requirements:
     
       if (error) return res.status(500).json({ error: 'Failed to load rate.' });
 
-      let REFERRAL_AMOUNT = (data.value/100) * 999;   
+      const REFERRAL_AMOUNT = (data.value/100) * 999;   
 
       if (insertedPlan?.id && partnerId) {
         const { error: earningError } = await supabase
