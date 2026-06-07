@@ -256,7 +256,7 @@ app.get('/api/partners/portal', authenticateToken, async (req, res) => {
       .eq('partner_id', profile.id)
       .order('created_at', { ascending: false });
  
-    const totalEarned   = earnings?.reduce((s, e) => s + parseFloat(e.amount), 0).toFixed(2) ?? '0.00';
+    const totalEarned   = profile?.reduce((s, e) => s + parseFloat(e.total_earnings), 0).toFixed(2) ?? '0.00';
     const pendingPayout = earnings?.filter(e => e.status === 'pending').reduce((s, e) => s + parseFloat(e.amount), 0).toFixed(2) ?? '0.00';
     const totalReferrals = earnings?.length ?? 0;
  
@@ -519,6 +519,8 @@ Requirements:
         console.error('Database history storage failure:', dbError);
       }
 
+      
+
        const { data, error } = await supabase
         .from('settings')
         .select('value')
@@ -527,7 +529,7 @@ Requirements:
     
       if (error) return res.status(500).json({ error: 'Failed to load rate.' });
 
-      const REFERRAL_AMOUNT = (data.value/100) * 999;   
+      const REFERRAL_AMOUNT = (data.value/100) * 999;
 
       if (insertedPlan?.id && partnerId) {
         const { error: earningError } = await supabase
@@ -536,7 +538,7 @@ Requirements:
             {
               partner_id: partnerId,
               plan_id: insertedPlan.id,
-              amount: 999,
+              amount: REFERRAL_AMOUNT,
               status: 'paid',
             },
           ]);
