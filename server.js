@@ -526,8 +526,6 @@ Requirements:
         .single();
     
       if (error) return res.status(500).json({ error: 'Failed to load rate.' });
-      return res.json({ commissionRate: parseFloat(data.value) });
-    });
 
       REFERRAL_AMOUNT = (data.value/100) * 999;   
 
