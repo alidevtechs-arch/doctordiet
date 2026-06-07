@@ -519,6 +519,18 @@ Requirements:
         console.error('Database history storage failure:', dbError);
       }
 
+       const { data, error } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'commission_rate')
+        .single();
+    
+      if (error) return res.status(500).json({ error: 'Failed to load rate.' });
+      return res.json({ commissionRate: parseFloat(data.value) });
+    });
+
+      REFERRAL_AMOUNT = (data.value/100) * 999;   
+
       if (insertedPlan?.id && partnerId) {
         const { error: earningError } = await supabase
           .from('referral_earnings')
@@ -538,20 +550,20 @@ Requirements:
 
        const { data: partnerProfile, error: partnerFetchError } = await supabase
         .from('partner_profiles')
-        .select('earning')
+        .select('total_earnings')
         .eq('id', partnerId)
         .single();
 
       if (partnerFetchError) {
         console.error('Partner earning fetch failure:', partnerFetchError);
       } else {
-        const currentEarning = Number(partnerProfile?.earning || 0);
+        const currentEarning = Number(partnerProfile?.total_earning || 0);
         const newEarning = currentEarning + REFERRAL_AMOUNT;
 
         const { error: partnerUpdateError } = await supabase
           .from('partner_profiles')
           .update({
-            earning: newEarning,
+            total_earnings: newEarning,
           })
           .eq('id', partnerId);
 
