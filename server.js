@@ -35,6 +35,7 @@ const openai = new OpenAI({
 });
 
 
+
 const getClientIp = (req) =>
   (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '127.0.0.1';
 
@@ -63,30 +64,7 @@ function generatePromoCode(businessName) {
 
 
 // Middleware to verify token
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // get the part after "Bearer "
 
-  if (!token) {
-    return res.status(401).json({ error: 'No token provided. Please log in.' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRETS);
-    req.user = decoded; // { id, email, role }
-    next();
-  } catch (err) {
-    return res.status(403).json({ error: 'Invalid or expired token. Please log in again.' });
-  }
-};
-
-// ── paste this right after your authenticateToken function ──
-function requireAdmin(req, res, next) {
-  if (req.user.role !== 'Admin') {
-    return res.status(403).json({ error: 'Admin access only.' });
-  }
-  next();
-}
 
 // POST /api/referral/confirm
 // Fires only after successful GoPayFast redirect
@@ -539,7 +517,7 @@ Requirements:
               partner_id: partnerId,
               plan_id: insertedPlan.id,
               amount: REFERRAL_AMOUNT,
-              status: 'paid',
+              status: 'unpaid',
             },
           ]);
     
@@ -548,31 +526,6 @@ Requirements:
         }
       }
 
-       const { data: partnerProfile, error: partnerFetchError } = await supabase
-        .from('partner_profiles')
-        .select('total_earnings')
-        .eq('id', partnerId)
-        .single();
-
-      if (partnerFetchError) {
-        console.error('Partner earning fetch failure:', partnerFetchError);
-      } else {
-        const currentEarning = Number(partnerProfile?.total_earning || 0);
-        const newEarning = currentEarning + REFERRAL_AMOUNT;
-
-        const { error: partnerUpdateError } = await supabase
-          .from('partner_profiles')
-          .update({
-            total_earnings: newEarning,
-          })
-          .eq('id', partnerId);
-
-        if (partnerUpdateError) {
-          console.error('Partner earning update failure:', partnerUpdateError);
-        } else {
-          console.log('Partner earning updated successfully.');
-        }
-      }
       
     }
 
@@ -665,60 +618,17 @@ app.post('/api/payments/fulfill-subscription', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const { email, password:inputpassword } = req.body;
 
-  // Validate both fields upfront
-  if (!email || !inputpassword) {
-    return res.status(400).json({ error: 'Email and password are required.' });
-  }
+  try{
 
-  try {
-    const cleanEmail = email.toLowerCase().trim();
+    const result = await Login(inputpassword, email, supabase);
 
-    // ✅ Include password_hash in the select
-    const { data: user, error: fetchError } = await supabase
-      .from('users')
-      .select('id, email, role, password')  // fetch the hashed password
-      .eq('email', cleanEmail)
-      .maybeSingle();
+    return res.status(200).json(result);
 
-    if (fetchError) throw fetchError;
-
-    if (!user) {
-      return res.status(401).json({ 
-        error: 'This account does not exist. Please register first. یہ اکاؤنٹ موجود نہیں ہے۔ پہلے رجسٹریشن کریں۔'
-      });
-    }
-
-    // ✅ Compare provided password with stored hash
-    const passwordMatch = await bcrypt.compare(inputpassword, user.password).catch(() => false);
-    
-    // Fallback for plaintext (old users)
-    const isMatch = passwordMatch || inputpassword === user.password;
-    
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Incorrect password.' });
-    }
-
-
-    // ✅ Never send password_hash back to client
-    const { password, ...safeUser } = user;
-
-    // ✅ Issue a JWT token
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRETS,
-      { expiresIn: '7d' }
-    );
-
-    return res.status(200).json({
-      message: 'Login successful.',
-      token,
-      user: safeUser
-    });
-
-  } catch (error) {
-    console.error('Login Error:', error);
+  }catch (error) {
+   console.error('Login Error:', error);
     return res.status(500).json({ error: 'Database operations connection failed.' });
   }
+
 });
 
 /**
@@ -815,176 +725,87 @@ app.post('/api/auth/register', async (req, res) => {
  * @route   GET /api/admin/metrics
  * @desc    Fetch aggregated platform user demographics and subscription counts
  */
-app.get('/api/admin/metrics', async (req, res) => {
+app.get('/api/admin/metrics',authenticateToken,requireAdmin, async (req, res) => {
   try {
-    // 1. Fetch total users breakdown
-    const { data: users, error: userError } = await supabase
-      .from('users')
-      .select('role');
-
-    if (userError) throw userError;
-
-    let totalUsers = users.length;
-    let totalPatients = users.filter(u => u.role === 'Patient').length;
-    let totalDoctors = users.filter(u => u.role === 'Doctor').length;
-
-    // 2. Fetch subscription metrics grouped by type
-    const { data: subs, error: subError } = await supabase
-      .from('subscriptions')
-      .select('subscription_type');
-
-    if (subError) throw subError;
-
-    // Accumulate individual subscription variant counts dynamically
-    const subscriptionCounts = {};
-    subs.forEach(s => {
-      const type = s.subscription_type || 'Unknown';
-      subscriptionCounts[type] = (subscriptionCounts[type] || 0) + 1;
-    });
+    const result = await overview(supabase);
+    const rankings = await getTopPartnersByStatusLast30Days(supabase);
 
     return res.status(200).json({
-      userStats: { totalUsers, totalPatients, totalDoctors },
-      subscriptionCounts
+      result,
+      rankings
     });
+
   } catch (error) {
     console.error('Metrics Engine Failure:', error);
     return res.status(500).json({ error: 'Failed to extract system performance metrics.' });
   }
 });
 
-/**
- * @route   GET /api/admin/demo-requests
- * @desc    Fetch individual detailed demo records paired with physical addresses
- */
-app.get('/api/admin/demo-requests', async (req, res) => {
-  try {
-    // Added address column query selection parameters
-    const { data: requests, error: reqError } = await supabase
-      .from('demo_request')
-      .select(`
-        id,
-        stat,
-        created_at,
-        user_id,
-        address, 
-        users (
-          username,
-          email,
-          first_name,
-          last_name
-        )
-      `)
-      .order('created_at', { ascending: false });
+app.get('/api/admin/partners/pending-commissions/payment-methods',authenticateToken,requireAdmin,
+  async (req, res) => {
+    try {
+      const result = await getPendingPartnerCommissionsWithPaymentMethods(supabase);
 
-    if (reqError) throw reqError;
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      console.error('Pending commissions payment methods API error:', error);
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    
-    let pendingCount = requests.filter(r => r.stat === 'pending').length;
-    let doneCount = requests.filter(r => r.stat === 'done').length;
-    let totalRequestsReceivedToday = requests.filter(r => {
-      return r.created_at && r.created_at.startsWith(todayStr);
-    }).length;
-
-    return res.status(200).json({
-      demoStats: { pendingCount, doneCount, totalRequestsReceivedToday },
-      requestsList: requests
-    });
-  } catch (error) {
-    console.error('Demo Processing Failure:', error);
-    return res.status(500).json({ error: 'Failed to parse operational demo requests.' });
-  }
-});
-
-/**
- * @route   PUT /api/admin/demo-requests/:id/status
- * @desc    Advance demo operational lifecycle status from pending to done
- */
-app.put('/api/admin/demo-requests/:id/status', async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-
-  if (status !== 'done') {
-    return res.status(400).json({ error: 'System architecture permissions strictly allow state transitions to done only.' });
-  }
-
-  try {
-    const { data: updatedRequest, error: updateError } = await supabase
-      .from('demo_request')
-      .update({ stat: 'done' })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (updateError) throw updateError;
-
-    return res.status(200).json({
-      message: 'Demo request marked as completed successfully.',
-      updatedRequest
-    });
-  } catch (error) {
-    console.error('Status Modification Failure:', error);
-    return res.status(500).json({ error: 'Failed to update workflow execution status.' });
-  }
-});
-
-
-/**
- * @route   POST /api/demo/request
- * @desc    Create a new clinical platform demo request for a user including address
- */
-app.post('/api/demo/request', async (req, res) => {
-  const { user_id, address } = req.body;
-
-  if (!user_id) {
-    return res.status(400).json({ error: 'User authentication ID is required.' });
-  }
-  if (!address || !address.trim()) {
-    return res.status(400).json({ error: 'A valid operational clinic or residential address is required.' });
-  }
-
-  try {
-    // Check for duplicate pending requests
-    const { data: existingRequest, error: checkError } = await supabase
-      .from('demo_request')
-      .select('id')
-      .eq('user_id', user_id)
-      .eq('stat', 'pending')
-      .maybeSingle();
-
-    if (checkError) throw checkError;
-
-    if (existingRequest) {
-      return res.status(409).json({ 
-        error: 'You already have a pending demo request. Our team will contact you shortly!' 
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to load pending partner commissions with payment methods.',
       });
     }
-
-    // Insert the new request with address mapping parameters
-    const { data: newRequest, error: insertError } = await supabase
-      .from('demo_request')
-      .insert([
-        { 
-          user_id: parseInt(user_id, 10), 
-          stat: 'pending',
-          address: address.trim() // Writes to your newly added database column
-        }
-      ])
-      .select()
-      .single();
-
-    if (insertError) throw insertError;
-
-    return res.status(201).json({
-      message: 'Demo request logged successfully.',
-      newRequest
-    });
-
-  } catch (error) {
-    console.error('Demo Insertion Error:', error);
-    return res.status(500).json({ error: 'Failed to process demo request on the server.' });
   }
+);
+
+app.post('/api/admin/partners/pay-commissions',authenticateToken,requireAdmin,async (req, res) => {
+    try {
+      const { partner_id, payment_method_id } = req.body;
+
+      const result = await markPartnerCommissionsPaidLast30Days(
+        supabase,
+        Number(partner_id),
+        Number(payment_method_id)
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: 'Partner commissions marked as paid successfully.',
+        data: result,
+      });
+    } catch (error) {
+      console.error('Pay partner commissions API error:', error);
+
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to pay partner commissions.',
+      });
+    }
+  }
+);
+
+app.get('/api/admin/partner/summary',authenticateToken,requireAdmin, async (req, res) => {
+
+  try {
+    const result = await getAllPartnerPortalData(supabase);
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("All partners portal error:", error);
+
+    return res.status(500).json({
+      error: "Failed to load partner portal data."
+    });
+  }
+
 });
+
+// ==========================================
+// PAYMENT CHECKOUT ENDPOINTS
+// ==========================================
 
 
 // ─── POST /api/checkout ───────────────────────────────────────────────────────
