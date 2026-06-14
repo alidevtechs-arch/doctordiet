@@ -11,6 +11,9 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const jwt = require('jsonwebtoken');
 import crypto from 'crypto'; // ✅ add this at the top with your other imports
+import {Login, authenticateToken, requireAdmin} from './functions/authentication.js';
+import {getAllPartnerPortalData, overview, getTopPartnersByStatusLast30Days, getPendingPartnerCommissionsWithPaymentMethods, markPartnerCommissionsPaidLast30Days} from './functions/admin.js';
+
 
 const app = express();
 app.use(cors());
