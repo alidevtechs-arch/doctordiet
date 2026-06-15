@@ -13,7 +13,7 @@ const jwt = require('jsonwebtoken');
 import crypto from 'crypto'; // ✅ add this at the top with your other imports
 import {Login, authenticateToken, requireAdmin} from './functions/authentication.js';
 import {getAllPartnerPortalData, overview, getTopPartnersByStatusLast30Days, getPendingPartnerCommissionsWithPaymentMethods, markPartnerCommissionsPaidLast30Days} from './functions/admin.js';
-
+import {applyForPartnerAndGeneratePromoCode} from './functions/partner.js';
 
 const app = express();
 app.use(cors());
@@ -291,60 +291,19 @@ app.get('/api/partners/portal', authenticateToken, async (req, res) => {
 
 
 // ✅ Route now uses authenticateToken middleware
-app.post('/apply', authenticateToken, async (req, res) => {
-  // ✅ userId comes from the verified token, not the body
-  const userId = req.user.id;
-
+app.post('/api/partners/apply', authenticateToken, async (req, res) => {
   try {
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('username')
-      .eq('id', userId)
-      .single();
+    const userId = req.user.id;
+    console.log(userId);
+    const result = await applyForPartnerAndGeneratePromoCode(supabase, userId, req.body);
 
-    if (userError || !user) {
-      return res.status(404).json({ error: 'User not found in database.' });
-    }
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Partner apply error:', error);
 
-    const businessName = user.username;
-
-    const { data: partnerData, error: partnerError } = await supabase
-      .from('partner_profiles')
-      .insert([{ 
-        user_id: userId, 
-        business_name: businessName,
-        status: 'silver' 
-      }])
-      .select()
-      .single();
-
-    if (partnerError) {
-      if (partnerError.code === '23505') {
-        return res.status(400).json({ error: 'You are already a registered partner.' });
-      }
-      return res.status(500).json({ error: 'Failed to create partner profile.' });
-    }
-
-    const newPromoCode = generatePromoCode(businessName);
-
-    const { data: promoData, error: promoError } = await supabase
-      .from('promo_codes')
-      .insert([{ partner_id: partnerData.id, code: newPromoCode, is_master: true }])
-      .select()
-      .single();
-
-
-    if (promoError) throw promoError;
-
-    return res.status(201).json({
-      message: 'Partner profile created.',
-      partner: { businessName: partnerData.business_name },
-      promoCode: promoData.code,
+    return res.status(500).json({
+      error: error.message || 'Failed to apply for partner program.'
     });
-
-  } catch (err) {
-    console.error('Unexpected server error:', err);
-    return res.status(500).json({ error: 'An unexpected error occurred.' });
   }
 });
 /**
