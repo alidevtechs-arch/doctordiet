@@ -29,7 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 // ─── Config ───────────────────────────────────────────────────────────────────
 // UAT (sandbox) credentials — use these for testing
 // Switch to production credentials + URL when going live
-const PAYFAST_BASE_URL = process.env.PAYFAST_BASE_URL || 'https://ipguat.apps.net.pk/Ecommerce/api';
+const PAYFAST_BASE_URL = process.env.PAYFAST_BASE_URL || 'https://ipg1.apps.net.pk/Ecommerce/api';
 const MERCHANT_ID      = process.env.MERCHANT_ID;
 const SECURED_KEY      = process.env.SECURED_KEY;
 const SUCCESS_URL      = process.env.SUCCESS_URL;    
