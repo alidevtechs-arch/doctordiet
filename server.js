@@ -568,12 +568,13 @@ app.get('/api/admin/partners/pending-commissions/payment-methods',authenticateTo
 
 app.post('/api/admin/partners/pay-commissions',authenticateToken,requireAdmin,async (req, res) => {
     try {
-      const { partner_id, payment_method_id } = req.body;
+      const { partner_id, payment_method_id, pending_amount } = req.body;
 
       const result = await markPartnerCommissionsPaidLast30Days(
         supabase,
         Number(partner_id),
-        Number(payment_method_id)
+        Number(payment_method_id),
+        Number(pending_amount)
       );
 
       return res.status(200).json({
@@ -591,6 +592,7 @@ app.post('/api/admin/partners/pay-commissions',authenticateToken,requireAdmin,as
     }
   }
 );
+
 
 app.get('/api/admin/partner/summary',authenticateToken,requireAdmin, async (req, res) => {
 
