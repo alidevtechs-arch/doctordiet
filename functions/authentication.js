@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRETS = "851c67c962d6a25f0436becbe7ef6e43";
+const JWT_SECRETS = process.env.JWT_SECRETS;
 
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -28,59 +28,70 @@ export function requireAdmin(req, res, next) {
   next();
 }
 
-async function Login(inputpassword, email, supabase)
-{
-    
-    // Validate both fields upfront
-    if (!email || !inputpassword) {
-        return { error: 'Email and password are required.' };
-    }
-    
-    
-    const cleanEmail = email.toLowerCase().trim();
-    
-    // ✅ Include password_hash in the select
-    const { data: user, error: fetchError } = await supabase
-      .from('users')
-      .select('id, email, role, password')  // fetch the hashed password
-      .eq('email', cleanEmail)
-      .maybeSingle();
-    
-    if (fetchError) throw fetchError;
-    
-    if (!user) {
-      return { 
-        error: 'This account does not exist. Please register first. یہ اکاؤنٹ موجود نہیں ہے۔ پہلے رجسٹریشن کریں۔'
-      };
-    }
-    
-        // ✅ Compare provided password with stored hash
-    const passwordMatch = await bcrypt.compare(inputpassword, user.password).catch(() => false);
-        
-        // Fallback for plaintext (old users)
-    const isMatch = passwordMatch || inputpassword === user.password;
-        
-    if (!isMatch) {
-      return { error: 'Incorrect password.' };
-    }
-    
-    
-    // ✅ Never send password_hash back to client
-    const { password, ...safeUser } = user;
-    
-    // ✅ Issue a JWT token
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      JWT_SECRETS,
-      { expiresIn: '7d' }
-    );
-    
+async function Login(inputpassword, email, supabase) {
+  if (!email || !inputpassword) {
     return {
-      message: 'Login successful.',
-      token,
-      user: safeUser
+      success: false,
+      statusCode: 400,
+      error: 'Email and password are required.'
     };
-    
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+
+  const { data: user, error: fetchError } = await supabase
+    .from('users')
+    .select('id, email, role, password')
+    .eq('email', cleanEmail)
+    .maybeSingle();
+
+  if (fetchError) {
+    throw fetchError;
+  }
+
+  if (!user) {
+    return {
+      success: false,
+      statusCode: 404,
+      error: 'This account does not exist. Please register first.'
+    };
+  }
+
+  const passwordMatch = await bcrypt
+    .compare(inputpassword, user.password)
+    .catch(() => false);
+
+  const isMatch = passwordMatch || inputpassword === user.password;
+
+  if (!isMatch) {
+    return {
+      success: false,
+      statusCode: 401,
+      error: 'Incorrect password.'
+    };
+  }
+
+  const { password, ...safeUser } = user;
+
+  const token = jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role
+    },
+    JWT_SECRETS,
+    {
+      expiresIn: '7d'
+    }
+  );
+
+  return {
+    success: true,
+    statusCode: 200,
+    message: 'Login successful.',
+    token,
+    user: safeUser
+  };
 }
 
 
