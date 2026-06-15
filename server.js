@@ -619,19 +619,30 @@ app.post('/api/payments/fulfill-subscription', async (req, res) => {
  * @desc    Verify existing user. Fails if user does not exist.
  */
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password:inputpassword } = req.body;
+  const { email, password: inputpassword } = req.body;
 
-  try{
-
+  try {
     const result = await Login(inputpassword, email, supabase);
 
-    return res.status(200).json(result);
+    if (!result.success) {
+      return res.status(result.statusCode).json({
+        error: result.error
+      });
+    }
 
-  }catch (error) {
-   console.error('Login Error:', error);
-    return res.status(500).json({ error: 'Database operations connection failed.' });
+    return res.status(200).json({
+      message: result.message,
+      token: result.token,
+      user: result.user
+    });
+
+  } catch (error) {
+    console.error('Login Error:', error);
+
+    return res.status(500).json({
+      error: 'Database operations connection failed.'
+    });
   }
-
 });
 
 /**
