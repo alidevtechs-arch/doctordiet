@@ -245,7 +245,8 @@ app.get('/api/partners/portal', authenticateToken, async (req, res) => {
     const totalEarned = Number(profile.total_earnings || 0).toFixed(2);
     const pendingPayout = earnings?.filter(e => e.status === 'pending').reduce((s, e) => s + parseFloat(e.amount), 0).toFixed(2) ?? '0.00';
     const totalReferrals = earnings?.length ?? 0;
-    const status = earnings.status;
+    let status = []
+    earnings?.forEach(p => { status[p.plan_id] = p.status; });
  
     // recent 4 earnings with plan info
     const recentFour = earnings?.slice(0, 4) ?? [];
@@ -265,6 +266,7 @@ app.get('/api/partners/portal', authenticateToken, async (req, res) => {
       plan:      planDurations[e.plan_id] ?? 'Standard',
       amount:    parseFloat(e.amount).toFixed(2),
       date:      new Date(e.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+      status:    status[e.plan_id],
     }));
  
     // next payout date (1st of next month)
@@ -288,7 +290,6 @@ app.get('/api/partners/portal', authenticateToken, async (req, res) => {
       nextPayoutDate,
       recentEarnings,
       commissionRate: parseFloat(setting?.value ?? '15'),
-      status,
     });
   } catch (err) {
     console.error('Portal error:', err);
