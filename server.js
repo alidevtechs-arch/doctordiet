@@ -14,6 +14,10 @@ import crypto from 'crypto'; // ✅ add this at the top with your other imports
 import {Login, authenticateToken, requireAdmin} from './functions/authentication.js';
 import {getAllPartnerPortalData, overview, getTopPartnersByStatusLast30Days, getPendingPartnerCommissionsWithPaymentMethods, markPartnerCommissionsPaidLast30Days} from './functions/admin.js';
 import {applyForPartnerAndGeneratePromoCode} from './functions/partner.js';
+import {
+  updateDiscountSetting,
+  updateSevenDayPriceSetting
+} from './functions/admin.js';
 
 const app = express();
 app.use(cors());
@@ -775,6 +779,60 @@ app.get('/api/admin/partner/summary',authenticateToken,requireAdmin, async (req,
   }
 
 });
+
+app.get('/api/admin/settings', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', ['price_7_day', 'discount']);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return res.status(200).json({
+      settings: data
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: error.message || 'Failed to load settings.'
+    });
+  }
+});
+
+app.put('/api/admin/settings/discount', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { discount } = req.body;
+
+    const result = await updateDiscountSetting(supabase, discount);
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Update discount error:', error);
+
+    return res.status(500).json({
+      error: error.message || 'Failed to update discount.'
+    });
+  }
+});
+
+app.put('/api/admin/settings/price-7-day', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { price_7_day } = req.body;
+
+    const result = await updateSevenDayPriceSetting(supabase, price_7_day);
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('Update 7-day price error:', error);
+
+    return res.status(500).json({
+      error: error.message || 'Failed to update 7-day price.'
+    });
+  }
+});
+
 
 // ==========================================
 // PAYMENT CHECKOUT ENDPOINTS
