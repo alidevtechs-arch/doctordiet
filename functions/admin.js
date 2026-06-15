@@ -142,7 +142,7 @@ export async function getPendingPartnerCommissionsWithPaymentMethods(supabase) {
   });
 }
 
-export async function markPartnerCommissionsPaidLast30Days(supabase,partnerId,paymentMethodId) {
+export async function markPartnerCommissionsPaidLast30Days(supabase,partnerId,paymentMethodId, pending_amount) {
   if (!partnerId) {
     throw new Error('Partner ID is required.');
   }
@@ -164,9 +164,32 @@ export async function markPartnerCommissionsPaidLast30Days(supabase,partnerId,pa
     throw new Error(error.message || 'Failed to mark partner commissions as paid.');
   }
 
+  const {data: earned, error: eranederror} = await supabase 
+    .from('partner_profiles')
+    .select('total_earnings')
+    .eq('id', partnerId)
+
+  if (eranederror) {
+    throw new Error (eranederror.message);
+  }
+
+  const referredearning = earned[0].total_earnings + pending_amount;
+  console.log(referredearning);
+
+  const {error: adderror} = await supabase 
+    .from('partner_profiles')
+    .update({
+      total_earnings: referredearning
+    })
+    .eq('id', partnerId)
+
+  if (adderror)
+  {
+    throw new Error (eranederror.message);
+  }
+
   return data?.[0] || null;
 }
-
 
 export async function updateDiscountSetting(supabase, discount) {
   if (discount === undefined || discount === null || discount === '') {
