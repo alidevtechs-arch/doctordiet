@@ -166,3 +166,72 @@ export async function markPartnerCommissionsPaidLast30Days(supabase,partnerId,pa
 
   return data?.[0] || null;
 }
+
+
+export async function updateDiscountSetting(supabase, discount) {
+  if (discount === undefined || discount === null || discount === '') {
+    throw new Error('Discount value is required.');
+  }
+
+  const discountNumber = Number(discount);
+
+  if (isNaN(discountNumber)) {
+    throw new Error('Discount must be a valid number.');
+  }
+
+  if (discountNumber < 0 || discountNumber > 100) {
+    throw new Error('Discount must be between 0 and 100.');
+  }
+
+  const { data, error } = await supabase
+    .from('settings')
+    .update({
+      value: String(discountNumber)
+    })
+    .eq('key', 'discount')
+    .select('key, value')
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    message: 'Discount updated successfully.',
+    setting: data
+  };
+}
+
+export async function updateSevenDayPriceSetting(supabase, price_7_day) {
+  if (price_7_day === undefined || price_7_day === null || price_7_day === '') {
+    throw new Error('7-day price value is required.');
+  }
+
+  const priceNumber = Number(price_7_day);
+
+  if (isNaN(priceNumber)) {
+    throw new Error('7-day price must be a valid number.');
+  }
+
+  if (priceNumber <= 0) {
+    throw new Error('7-day price must be greater than 0.');
+  }
+
+  const { data, error } = await supabase
+    .from('settings')
+    .update({
+      value: String(priceNumber)
+    })
+    .eq('key', 'price_7_day')
+    .select('key, value')
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    message: '7-day price updated successfully.',
+    setting: data
+  };
+}
