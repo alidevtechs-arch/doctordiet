@@ -258,3 +258,20 @@ export async function updateSevenDayPriceSetting(supabase, price_7_day) {
     setting: data
   };
 }
+
+
+export async function getprice(supabase) {
+
+  const {data, error} = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'price_7_day')
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  return {
+    price: data
+  };
+  
+}
