@@ -667,6 +667,20 @@ app.put('/api/admin/settings/price-7-day', authenticateToken, requireAdmin, asyn
 });
 
 
+app.get('/api/settings/price_7_day', async (req,res) => {
+
+  try{
+    const result = await getprice(supabase);
+
+    return res.status(200).json(result);
+  }catch(error){
+
+    return res.status(500).json({
+      error: "got error when fetching price"
+    });
+  }
+});
+
 // ==========================================
 // PAYMENT CHECKOUT ENDPOINTS
 // ==========================================
