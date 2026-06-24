@@ -65,7 +65,7 @@ export async function applyForPartnerAndGeneratePromoCode(supabase, userId, paym
     .maybeSingle();
 
   if (partnerFetchError) {
-    throw new Error(partnerFetchError.message);
+    throw new Error('You are already a partner');
   }
 
   if (!partner) {
