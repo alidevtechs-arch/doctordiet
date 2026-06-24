@@ -181,21 +181,23 @@ async function saveGeneratedPlanAndReferralEarning({
     return;
   }
 
-  const referralAmount = await calculateReferralAmount(supabase);
+  if (duration == '7-day')
+  {
+    const referralAmount = await calculateReferralAmount(supabase);
+    const { error: earningError } = await supabase
+      .from('referral_earnings')
+      .insert([
+        {
+          partner_id: partnerId,
+          plan_id: insertedPlan.id,
+          amount: referralAmount,
+          status: 'unpaid'
+        }
+      ]);
 
-  const { error: earningError } = await supabase
-    .from('referral_earnings')
-    .insert([
-      {
-        partner_id: partnerId,
-        plan_id: insertedPlan.id,
-        amount: referralAmount,
-        status: 'unpaid'
-      }
-    ]);
-
-  if (earningError) {
-    console.error('Referral earning storage failure:', earningError);
+    if (earningError) {
+      console.error('Referral earning storage failure:', earningError);
+    }
   }
 }
 
