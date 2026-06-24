@@ -81,7 +81,7 @@ export async function applyForPartnerAndGeneratePromoCode(supabase, userId, paym
       .single();
 
     if (partnerCreateError) {
-      throw new Error(partnerCreateError.message);
+      throw new Error('Try again later');
     }
 
     partner = newPartner;
@@ -104,7 +104,7 @@ export async function applyForPartnerAndGeneratePromoCode(supabase, userId, paym
     .upsert(paymentPayload);
 
   if (paymentError) {
-    throw new Error(paymentError.message);
+    throw new Error('try again later');
   }
 
   let { data: existingPromoCode, error: promoFetchError } = await supabase
@@ -115,7 +115,7 @@ export async function applyForPartnerAndGeneratePromoCode(supabase, userId, paym
     .maybeSingle();
 
   if (promoFetchError) {
-    throw new Error(promoFetchError.message);
+    throw new Error('try again Later');
   }
 
   if (existingPromoCode) {
@@ -139,7 +139,7 @@ export async function applyForPartnerAndGeneratePromoCode(supabase, userId, paym
     .single();
 
   if (promoCreateError) {
-    throw new Error(promoCreateError.message);
+    throw new Error('Try Again later');
   }
 
   return {
